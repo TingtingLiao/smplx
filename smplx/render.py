@@ -72,12 +72,8 @@ class Renderer(torch.nn.Module):
         # Interpolate world space position
         alpha, _ = dr.interpolate(torch.ones_like(v_clip[..., :1]), rast, mesh.f)  # [B, H, W, 1]
         depth = rast[..., [2]]  # [B, H, W]
-
-        # render vertex color  
-        normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
-        normal = (normal + 1) / 2.
-
-        # Texture coordinate
+ 
+    
         if mesh.albedo is not None:
             texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all') 
             albedo = dr.texture(
@@ -85,54 +81,33 @@ class Renderer(torch.nn.Module):
             color = torch.where(rast[..., 3:] > 0, albedo, torch.tensor(0).to(albedo.device))  # remove background
         elif mesh.vc is not None:
             color, _ = dr.interpolate(mesh.vc[None, ...].float(), rast, mesh.f)
+        else:
+            color = None 
  
-        if mode == "lambertian":
+        if mode == "lambertian" and color is not None:
             lambertian = ambient_ratio + (1 - ambient_ratio) * (normal @ light_d.view(-1, 1)).float().clamp(min=0)
             color = color * lambertian.repeat(1, 1, 1, 3)
-  
-        normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
-        color = dr.antialias(color, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
-        alpha = dr.antialias(alpha, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
 
+        # render vertex color  
+        normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
+        normal = (normal + 1) / 2.
+
+        # antialias
+        normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
+        alpha = dr.antialias(alpha, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
+        if color is not None:
+            color = dr.antialias(color, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
+          
         # inverse super-sampling
         if spp > 1:
-            color = scale_img_nhwc(color, (h, w))
+            if color is not None:
+                color = scale_img_nhwc(color, (h, w))
             alpha = scale_img_nhwc(alpha, (h, w))
             normal = scale_img_nhwc(normal, (h, w))
-
-        # return color, normal, alpha
+ 
         return {
             'image': color,
             'normal': normal,
             'alpha': alpha
         }
- 
-
-    def render_normal(self, vertex, faces, vertex_normals, mvp, h=512, w=512, spp=1):
-        B = mvp.shape[0]
-        v_clip = torch.bmm(F.pad(vertex, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1),
-                           torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
-        
-        res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
-        rast, rast_db = dr.rasterize(self.glctx, v_clip, faces, res)
-
-        alpha, _ = dr.interpolate(torch.ones_like(v_clip[..., :1]), rast, faces)  # [B, H, W, 1]
-        depth = rast[..., [2]]  # [B, H, W]
-
-        normal, _ = dr.interpolate(vertex_normals[None, ...].float(), rast, faces)
-        normal = (normal + 1) / 2.
-
-        normal = dr.antialias(normal, rast, v_clip, faces).clamp(0, 1)  # [H, W, 3]
-        if spp > 1:
-            normal = scale_img_nhwc(normal, (h, w))
-            alpha = scale_img_nhwc(alpha, (h, w))
-        return normal, alpha
-
-    @staticmethod
-    def get_2d_texture(mesh, rast, rast_db):
-        texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all')
-
-        albedo = dr.texture(
-            mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear-mipmap-linear')  # [B, H, W, 3]
-        albedo = torch.where(rast[..., 3:] > 0, albedo, torch.tensor(0).to(albedo.device))  # remove background
-        return albedo
+  

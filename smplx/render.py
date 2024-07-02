@@ -3,7 +3,21 @@ import random
 import torch
 import torch.nn.functional as F
 import nvdiffrast.torch as dr
-from utils.common import scale_img_nhwc
+ 
+
+
+def scale_img_nhwc(x, size, mag='bilinear', min='bilinear'):
+    assert (x.shape[1] >= size[0] and x.shape[2] >= size[1]) or (x.shape[1] < size[0] and x.shape[2] < size[
+        1]), "Trying to magnify image in one dimension and minify in the other"
+    y = x.permute(0, 3, 1, 2)  # NHWC -> NCHW
+    if x.shape[1] > size[0] and x.shape[2] > size[1]:  # Minification, previous size was bigger
+        y = torch.nn.functional.interpolate(y, size, mode=min)
+    else:  # Magnification
+        if mag == 'bilinear' or mag == 'bicubic':
+            y = torch.nn.functional.interpolate(y, size, mode=mag, align_corners=True)
+        else:
+            y = torch.nn.functional.interpolate(y, size, mode=mag)
+    return y.permute(0, 2, 3, 1).contiguous()  # NCHW -> NHWC
 
 
 class Renderer(torch.nn.Module):
@@ -23,8 +37,7 @@ class Renderer(torch.nn.Module):
                 light_d=None,
                 ambient_ratio=1.,
                 mode='rgb',
-                spp=1, 
-                is_train=False):
+                spp=1):
         """
         Args:
             spp:
@@ -60,26 +73,23 @@ class Renderer(torch.nn.Module):
         alpha, _ = dr.interpolate(torch.ones_like(v_clip[..., :1]), rast, mesh.f)  # [B, H, W, 1]
         depth = rast[..., [2]]  # [B, H, W]
 
-        if is_train:
-            vn, _ = utils.compute_normal(v_clip[0, :, :3], mesh.f)
-            normal, _ = dr.interpolate(vn[None, ...].float(), rast, mesh.f)
-        else:
-            normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
-
-        # Texture coordinate
-        if not mode == 'normal': 
-            albedo = self.get_2d_texture(mesh, rast, rast_db)
-
-        if mode == 'normal':
-            color = (normal + 1) / 2.
-        elif mode == 'rgb':
-            color = albedo
-        else:  # lambertian
-            lambertian = ambient_ratio + (1 - ambient_ratio) * (normal @ light_d.view(-1, 1)).float().clamp(min=0)
-            color = albedo * lambertian.repeat(1, 1, 1, 3)
-
+        # render vertex color  
+        normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
         normal = (normal + 1) / 2.
 
+        # Texture coordinate
+        if mesh.albedo is not None:
+            texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all') 
+            albedo = dr.texture(
+                mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear-mipmap-linear')  # [B, H, W, 3]
+            color = torch.where(rast[..., 3:] > 0, albedo, torch.tensor(0).to(albedo.device))  # remove background
+        elif mesh.vc is not None:
+            color, _ = dr.interpolate(mesh.vc[None, ...].float(), rast, mesh.f)
+ 
+        if mode == "lambertian":
+            lambertian = ambient_ratio + (1 - ambient_ratio) * (normal @ light_d.view(-1, 1)).float().clamp(min=0)
+            color = color * lambertian.repeat(1, 1, 1, 3)
+  
         normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
         color = dr.antialias(color, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
         alpha = dr.antialias(alpha, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]

@@ -9,6 +9,6 @@ setup(
         'torch',
         'numpy',
         'tqdm', 
-        'pickle', 
+        # 'pickle', 
     ],
 )

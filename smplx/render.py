@@ -37,7 +37,8 @@ class Renderer(torch.nn.Module):
                 light_d=None,
                 ambient_ratio=1.,
                 mode='rgb',
-                spp=1):
+                spp=1,
+                bg_color=None):
         """
         Args:
             spp:
@@ -104,7 +105,12 @@ class Renderer(torch.nn.Module):
                 color = scale_img_nhwc(color, (h, w))
             alpha = scale_img_nhwc(alpha, (h, w))
             normal = scale_img_nhwc(normal, (h, w))
- 
+
+        if bg_color is not None:
+            if color is not None:
+                color = color * alpha + bg_color * (1 - alpha)
+            normal = normal * alpha + bg_color * (1 - alpha)
+
         return {
             'image': color,
             'normal': normal,

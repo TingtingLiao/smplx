@@ -41,17 +41,14 @@ class Renderer(torch.nn.Module):
                 bg_color=None):
         """
         Args:
-            spp:
-            return_normal:
-            transform_nml:
+            spp: int
             mesh: Mesh object
             mvp: [batch, 4, 4]
             h: int
             w: int
             light_d:
             ambient_ratio: float
-            shading: str shading type albedo, normal,
-            ssp: int
+            mode: str rendering type rgb, normal, lambertian
         Returns:
             color: [batch, h, w, 3]
             alpha: [batch, h, w, 1]
@@ -90,6 +87,9 @@ class Renderer(torch.nn.Module):
             color = color * lambertian.repeat(1, 1, 1, 3)
 
         # render vertex color  
+        if mesh.vn is None:
+            mesh.auto_normal()
+            
         normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
         normal = (normal + 1) / 2.
 

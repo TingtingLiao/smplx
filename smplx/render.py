@@ -55,9 +55,10 @@ class Renderer(torch.nn.Module):
             depth: [batch, h, w, 1]
 
         """
-        B = mvp.shape[0]
+        B = mvp.shape[0] 
         v_clip = torch.bmm(F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1),
-                           torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
+                           torch.transpose(mvp, 1, 2)
+                           ).float()  # [B, N, 4]
          
 
         res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
@@ -89,7 +90,7 @@ class Renderer(torch.nn.Module):
         # render vertex color  
         if mesh.vn is None:
             mesh.auto_normal()
-            
+
         normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
         normal = (normal + 1) / 2.
 

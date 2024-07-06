@@ -898,10 +898,12 @@ class SMPLX(SMPLH):
 
     def __init__(
         self, model_path: str,
-	kid_template_path: str = '',
+	    kid_template_path: str = '',
         num_expression_coeffs: int = 10,
-        create_expression: bool = True,
+        create_expression: bool = True, 
         expression: Optional[Tensor] = None,
+        create_v_offsets: bool = True,
+        v_offsets: Optional[Tensor] = None,
         create_jaw_pose: bool = True,
         jaw_pose: Optional[Tensor] = None,
         create_leye_pose: bool = True,
@@ -931,6 +933,12 @@ class SMPLX(SMPLH):
                 (default = True).
             expression: torch.tensor, optional, Bx10
                 The default value for the expression member variable.
+                (default = None)
+            create_v_offsets: bool, optional
+                Flag for creating a member variable for the vertex offsets
+                (default = True)
+            v_offsets: torch.tensor, optional, BxNx3
+                The default value for the vertex offsets member variable.
                 (default = None)
             create_jaw_pose: bool, optional
                 Flag for creating a member variable for the jaw pose.
@@ -1075,6 +1083,15 @@ class SMPLX(SMPLH):
                                             requires_grad=True)
             self.register_parameter('expression', expression_param)
 
+        if create_v_offsets:
+            if v_offsets is None:
+                default_v_offsets = torch.zeros(
+                    [batch_size, self.v_template.size(0), 3], dtype=dtype)
+            else:
+                default_v_offsets = torch.tensor(v_offsets, dtype=dtype)
+            v_offsets_param = nn.Parameter(default_v_offsets, requires_grad=True)
+            self.register_parameter('v_offsets', v_offsets_param)
+
     def name(self) -> str:
         return 'SMPL-X'
 
@@ -1125,6 +1142,7 @@ class SMPLX(SMPLH):
         pose2rot: bool = True,
         return_shaped: bool = True,
         v_template: Optional[Tensor] = None,
+        v_offsets: Optional[Tensor] = None,
         **kwargs
     ) -> SMPLXOutput:
         '''
@@ -1185,6 +1203,7 @@ class SMPLX(SMPLH):
                          self.global_orient)
         body_pose = body_pose if body_pose is not None else self.body_pose
         betas = betas if betas is not None else self.betas
+        v_offsets = v_offsets if v_offsets is not None else self.v_offsets
 
         left_hand_pose = (left_hand_pose if left_hand_pose is not None else
                           self.left_hand_pose)
@@ -1233,7 +1252,9 @@ class SMPLX(SMPLH):
         vertices, joints, vT, jT, v_shaped, v_posed = lbs(shape_components, full_pose, v_template,
                                shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot,
+                               self.lbs_weights, 
+                               v_offsets=v_offsets, 
+                               pose2rot=pose2rot,
                                custom_out=True
                                )
 

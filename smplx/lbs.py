@@ -158,6 +158,7 @@ def lbs(
     J_regressor: Tensor,
     parents: Tensor,
     lbs_weights: Tensor,
+    v_offsets: Tensor = None,
     pose2rot: bool = True,
     custom_out: bool = False,
 ):
@@ -231,6 +232,10 @@ def lbs(
                                     posedirs).view(batch_size, -1, 3)
 
     v_posed = pose_offsets + v_shaped
+
+    if v_offsets is not None:
+        v_posed += v_offsets
+
     # 4. Get the global joint location
     J_transformed, A = batch_rigid_transform(rot_mats, J, parents, dtype=dtype)
 

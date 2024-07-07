@@ -111,3 +111,5 @@ def subdivide(vertices, faces, attributes=None, face_index=None):
     tri_mask = np.logical_not(tri_mask)
  
     return tri_mask
+
+

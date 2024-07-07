@@ -9,6 +9,7 @@ setup(
         'torch',
         'numpy',
         'tqdm', 
+        'matplotlib', 
         # 'pickle', 
     ],
 )

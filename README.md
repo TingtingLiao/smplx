@@ -32,7 +32,9 @@ smplx_out = smpl_model(
 )
 ``` 
 - **SMPLX Segments**
+
 ![Screenshot from 2024-07-08 18-49-33](https://github.com/TingtingLiao/smplx/assets/45743512/504c4572-5039-4a77-946f-52ee14275376)
+
 ```bash 
 from smplx.segment import SMPLXSeg
 SMPLXSeg = SMPLXSeg('./data/smplx', device=device)

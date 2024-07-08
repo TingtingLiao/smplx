@@ -3,11 +3,7 @@ import torch
 import numpy as np 
 import json
 import pickle as pkl 
-
-from .common import safe_normalize, dot
-
-class SMPLXSeg:
-    remesh_mask = remesh_mask[smplx_face].all(axis=1)
+ 
  
 def subdivide_inorder(vertices, faces, unique):
     triangles = vertices[faces]
@@ -95,21 +91,6 @@ def subdivide(vertices, faces, attributes=None, face_index=None):
 
     return new_vertices, new_faces, unique
 
-    e1 = np.linalg.norm(cano_v[faces[:, 0]] - cano_v[faces[:, 1]], axis=1, keepdims=True)
-    e2 = np.linalg.norm(cano_v[faces[:, 1]] - cano_v[faces[:, 2]], axis=1, keepdims=True)
-    e3 = np.linalg.norm(cano_v[faces[:, 2]] - cano_v[faces[:, 0]], axis=1, keepdims=True)
-    e = np.concatenate([e1,e2,e3], 1)  
-  
-    E1 = np.linalg.norm(pose_v[faces[:, 0]] - pose_v[faces[:, 1]], axis=1, keepdims=True)
-    E2 = np.linalg.norm(pose_v[faces[:, 1]] - pose_v[faces[:, 2]], axis=1, keepdims=True)
-    E3 = np.linalg.norm(pose_v[faces[:, 2]] - pose_v[faces[:, 0]], axis=1, keepdims=True)
-    E = np.concatenate([E1,E2,E3], 1)  
-  
-    thresh = E.max() * 0.8 + E.min() * 0.2
 
-    tri_mask = ((E.max(1) > thresh) | (e.max(1) > thresh) | (e.max(1) > thresh) | (e.max(1) > thresh))
-    tri_mask = np.logical_not(tri_mask)
- 
-    return tri_mask
 
 

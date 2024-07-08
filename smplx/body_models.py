@@ -38,6 +38,7 @@ from .utils import (
     FLAMEOutput,
     find_joint_kin_chain)
 from .vertex_joint_selector import VertexJointSelector
+from .subdivide import subdivide, subdivide_inorder
 
 
 class SMPL(nn.Module):
@@ -533,7 +534,7 @@ class SMPLH(SMPL):
             data_struct: Strct
                 A struct object. If given, then the parameters of the model are
                 read from the object. Otherwise, the model tries to read the
-                parameters from the given `model_path`. (default = None)
+                parametself.facesers from the given `model_path`. (default = None)
             create_left_hand_pose: bool, optional
                 Flag for creating a member variable for the pose of the left
                 hand. (default = True)
@@ -1143,6 +1144,7 @@ class SMPLX(SMPLH):
         return_shaped: bool = True,
         v_template: Optional[Tensor] = None,
         v_offsets: Optional[Tensor] = None,
+        upsample: bool = False,
         **kwargs
     ) -> SMPLXOutput:
         '''
@@ -1214,7 +1216,16 @@ class SMPLX(SMPLH):
         reye_pose = reye_pose if reye_pose is not None else self.reye_pose
         expression = expression if expression is not None else self.expression
         v_template = v_template if v_template is not None else self.v_template
+ 
+        if upsample:
+            if not hasattr(self, 'upsample_faces'): 
+                new_v, self.upsample_faces, unique = subdivide(v_template.detach().cpu().numpy(), self.faces) 
+                self.unique = torch.tensor(unique, dtype=torch.long, device=v_template.device)
+                self.upsample_lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, self.unique)
 
+                
+                # assert offset shape matching 
+              
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None:
             if hasattr(self, 'transl'):
@@ -1249,14 +1260,21 @@ class SMPLX(SMPLH):
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints, vT, jT, v_shaped, v_posed = lbs(shape_components, full_pose, v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, 
-                               v_offsets=v_offsets, 
-                               pose2rot=pose2rot,
-                               custom_out=True
-                               )
+        vertices, joints, vT, jT = lbs(
+            shape_components, 
+            full_pose, 
+            v_template,
+            shapedirs, 
+            self.posedirs,
+            self.J_regressor, 
+            self.parents,
+            self.lbs_weights if not upsample else self.upsample_lbs_weights, 
+            v_offsets=v_offsets, 
+            pose2rot=pose2rot,
+            custom_out=True,  
+            upsample_unique=self.unique if upsample else None, 
+            faces=self.faces_tensor if upsample else None
+            )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
@@ -1306,8 +1324,8 @@ class SMPLX(SMPLH):
                              left_hand_pose=left_hand_pose,
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
-                             v_shaped=v_shaped,
-                             v_posed=v_posed,
+                            #  v_shaped=v_shaped,
+                            #  v_posed=v_posed,
                              joints_transform=joints_transform,
                              full_pose=full_pose if return_full_pose else None)
         return output

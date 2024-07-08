@@ -25,6 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from .utils import rot_mat_to_euler, Tensor
+from .subdivide import subdivide, subdivide_inorder 
 
 
 def find_dynamic_lmk_idx_and_bcoords(
@@ -161,6 +162,8 @@ def lbs(
     v_offsets: Tensor = None,
     pose2rot: bool = True,
     custom_out: bool = False,
+    upsample_unique: Tensor = None, 
+    faces: Tensor = None,
 ):
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
 
@@ -192,7 +195,8 @@ def lbs(
         dtype: torch.dtype, optional
 
         custom_out: return A T if true
-
+        upsample_unique: Tensor, optional
+         
         Returns
         -------
         verts: torch.tensor BxVx3
@@ -233,6 +237,11 @@ def lbs(
 
     v_posed = pose_offsets + v_shaped
 
+    # todo upsampling 
+    if upsample_unique is not None: 
+        assert faces is not None, "faces must be provided if upsampling"  
+        v_posed = subdivide_inorder(v_posed.squeeze(0), faces, upsample_unique).unsqueeze(0)
+
     if v_offsets is not None:
         v_posed += v_offsets
 
@@ -255,9 +264,9 @@ def lbs(
     verts = v_homo[:, :, :3, 0]
 
     if custom_out:
-        return verts, J_transformed, T, A, v_shaped, v_posed
+        return verts, J_transformed, T, A 
 
-    return verts, J_transformed, v_shaped, v_posed
+    return verts, J_transformed
 
 
 def vertices2joints(J_regressor: Tensor, vertices: Tensor) -> Tensor:

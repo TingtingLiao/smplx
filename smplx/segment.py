@@ -1,4 +1,5 @@
 import json
+import pickle as pkl
 import numpy as np
 import torch
 from matplotlib import cm as mpl_cm, colors as mpl_colors
@@ -39,7 +40,7 @@ def index_triangles_from_vertex_mask(vertex_mask, triangles):
 
 
 class SMPLXSeg:
-    def __init__(self, vseg_path, smplx_faces, device):
+    def __init__(self, smplx_dir, device):
         #  'leftHand', 'rightHand', 
         #  'rightUpLeg', 'leftUpLeg'
         #  'leftArm', 'rightArm'
@@ -53,12 +54,20 @@ class SMPLXSeg:
         #  'leftHandIndex1',  , 'rightHandIndex1', 
         #  'leftForeArm', 'rightForeArm', 
         #  'hips' 
-        self.smplx_segs = json.load(open(vseg_path, 'r'))
-        self.smplx_faces = smplx_faces  
+        self.smplx_segs = json.load(open(f"{smplx_dir}/smplx_vert_segementation.json", 'r'))
+        self.flame_segs = pkl.load(open(f"{smplx_dir}/FLAME_masks.pkl", "rb"), encoding='latin1')
+        self.flame_to_smplx_vid = np.load(f"{smplx_dir}/FLAME_SMPLX_vertex_ids.npy", allow_pickle=True)
+        self.smplx_faces = np.load(f"{smplx_dir}/smplx_faces.npy")   
         self.device = device  
         self.N = 10475
         self._vc = None
-        
+    
+    def mapping_smplx_to_flame(self, flame_vid):
+        # flame: ['eye_region', 'neck', 'left_eyeball', 'right_eyeball', 'right_ear', 'right_eye_region', 'forehead', 'lips', 'nose', 'scalp', 'boundary', 'face', 'left_ear', 'left_eye_region'])
+        for key in ['right_ear', 'left_ear', 'nose', 'lips']:
+            if key in flame_vid:
+                return list(self.smplx_flame_vid[self.flame_segs["left_ear"]])
+
     def get_triangles(self, part_name):
         v_mask = np.zeros((self.N, 1))   
         v_mask[self.smplx_segs[part_name]] = 1 

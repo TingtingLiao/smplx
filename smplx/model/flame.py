@@ -14,7 +14,7 @@ from ..utils import (
     FLAMEOutput, 
     find_joint_kin_chain)
 from ..vertex_joint_selector import VertexJointSelector
-from .smpl import SMPL
+from .smpl import SMPL 
 
 
 class FLAME(SMPL):
@@ -115,7 +115,7 @@ class FLAME(SMPL):
             gender=gender,
             ext=ext,
             **kwargs)
-
+      
         self.use_face_contour = use_face_contour
 
         self.vertex_joint_selector.extra_joints_idxs = to_tensor(
@@ -160,8 +160,7 @@ class FLAME(SMPL):
         
         shapedirs = data_struct.shapedirs
         self.register_buffer("shapedirs", to_tensor(to_np(shapedirs[..., 0:self.SHAPE_SPACE_DIM]), dtype=self.dtype))
-
-      
+ 
         if len(shapedirs.shape) < 3:
             shapedirs = shapedirs[:, :, None]
         if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM +
@@ -321,14 +320,11 @@ class FLAME(SMPL):
         if transl is None:
             if hasattr(self, 'transl'):
                 transl = self.transl
-        print(global_orient.shape, neck_pose.shape, jaw_pose.shape, leye_pose.shape, reye_pose.shape)
-        exit()
+        # print(global_orient.shape, neck_pose.shape, jaw_pose.shape, leye_pose.shape, reye_pose.shape)
+        # exit()
         full_pose = torch.cat(
-            [global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1)
-       
-        print(full_pose.shape)
-        exit()
-
+            [global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1).reshape(-1, 5, 3)
+        
         batch_size = max(betas.shape[0], global_orient.shape[0],
                          jaw_pose.shape[0])
         # Concatenate the shape and expression coefficients
@@ -338,11 +334,17 @@ class FLAME(SMPL):
         shape_components = torch.cat([betas, expression], dim=-1)
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
       
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot,
-                               )
+        vertices, joints = lbs(
+            shape_components, 
+            full_pose, 
+            self.v_template,
+            shapedirs, 
+            self.posedirs,
+            self.J_regressor, 
+            self.parents,
+            self.lbs_weights, 
+            pose2rot=pose2rot,
+        )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()

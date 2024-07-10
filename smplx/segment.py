@@ -41,18 +41,19 @@ def index_triangles_from_vertex_mask(vertex_mask, triangles):
 class FlameSeg:
     def __init__(self, flame_dir, device):
         # flame: ['eye_region', 'neck', 'left_eyeball', 'right_eyeball', 'right_ear', 'right_eye_region', 'forehead', 'lips', 'nose', 'scalp', 'boundary', 'face', 'left_ear', 'left_eye_region'])
-         
         self.segms = pkl.load(open(f"{flame_dir}/FLAME_masks.pkl", "rb"), encoding='latin1')
-        print(self.segms.keys())
         self.device = device
         self.N = 5023
         self._vc = None
 
     def get_triangles(self, part_name):
         v_mask = np.zeros((self.N, 1))
-        v_mask[self.flame_segs[part_name]] = 1
+        v_mask[self.segms[part_name]] = 1
         triangles = index_triangles_from_vertex_mask(v_mask, self.flame_faces)
         return torch.tensor(triangles, dtype=torch.long, device=self.device)
+
+    def get_vertices(self, vertices, part_name):
+        return vertices[self.segms[part_name]]
 
     @property 
     def vc(self):

@@ -15,7 +15,7 @@ from ..utils import (
     find_joint_kin_chain)
 from ..vertex_joint_selector import VertexJointSelector
 from .smpl import SMPL 
-
+from ..subdivide import subdivide, subdivide_inorder
 
 class FLAME(SMPL):
     NUM_JOINTS = 5
@@ -30,6 +30,8 @@ class FLAME(SMPL):
         num_expression_coeffs=10,
         create_expression: bool = True,
         expression: Optional[Tensor] = None,
+        create_v_offsets: bool = True,
+        v_offsets: Optional[Tensor] = None,        
         create_neck_pose: bool = True,
         neck_pose: Optional[Tensor] = None,
         create_jaw_pose: bool = True,
@@ -38,11 +40,12 @@ class FLAME(SMPL):
         leye_pose: Optional[Tensor] = None,
         create_reye_pose=True,
         reye_pose: Optional[Tensor] = None,
-        use_face_contour=False,
+        use_face_contour=True,
         batch_size: int = 1,
         gender: str = 'neutral',
         dtype: torch.dtype = torch.float32,
         ext='pkl',
+        upsample: bool = False, 
         **kwargs
     ) -> None:
         ''' FLAME model constructor
@@ -61,6 +64,12 @@ class FLAME(SMPL):
             expression: torch.tensor, optional, Bx10
                 The default value for the expression member variable.
                 (default = None)
+            create_v_offsets: bool, optional
+                Flag for creating a member variable for the vertex offsets
+                (default = True)
+            v_offsets: torch.tensor, optional, BxNx3
+                The default value for the vertex offsets member variable.
+                (default = None)                
             create_neck_pose: bool, optional
                 Flag for creating a member variable for the neck pose.
                 (default = False)
@@ -94,6 +103,8 @@ class FLAME(SMPL):
             dtype: torch.dtype
                 The data type for the created variables
         '''
+        self.upsample = upsample
+    
         model_fn = f'FLAME_{gender.upper()}.{ext}'
         flame_path = os.path.join(model_path, model_fn)
         assert osp.exists(flame_path), 'Path {} does not exist!'.format(
@@ -120,6 +131,7 @@ class FLAME(SMPL):
 
         self.vertex_joint_selector.extra_joints_idxs = to_tensor(
             [], dtype=torch.long)
+ 
 
         if create_neck_pose:
             if neck_pose is None:
@@ -231,6 +243,20 @@ class FLAME(SMPL):
                 'neck_kin_chain',
                 torch.tensor(neck_kin_chain, dtype=torch.long))
         
+        if upsample:
+            self.set_upsample()
+        else:
+            self.N = self.v_template.shape[0]
+        
+        if create_v_offsets:
+            if v_offsets is None:
+                default_v_offsets = torch.zeros(
+                    [batch_size, self.N, 3], dtype=dtype)
+            else:
+                default_v_offsets = torch.tensor(v_offsets, dtype=dtype)
+            v_offsets_param = nn.Parameter(default_v_offsets, requires_grad=True)
+            self.register_parameter('v_offsets', v_offsets_param)
+
     @property
     def num_expression_coeffs(self):
         return self._num_expression_coeffs
@@ -246,6 +272,16 @@ class FLAME(SMPL):
         ]
         return '\n'.join(msg)
 
+    def set_upsample(self): 
+        new_v, self.upsample_faces, unique = subdivide(self.v_template.detach().cpu().numpy(), self.faces) 
+        unique = torch.tensor(unique, dtype=torch.long) 
+        upsample_lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, unique)
+
+        self.register_buffer('unique', unique)
+        self.register_buffer('upsample_lbs_weights', upsample_lbs_weights) 
+        self.N = len(new_v)
+        self.upsample = True 
+
     def forward(
         self,
         betas: Optional[Tensor] = None,
@@ -259,6 +295,7 @@ class FLAME(SMPL):
         return_verts: bool = True,
         return_full_pose: bool = False,
         pose2rot: bool = True,
+        v_offsets: Optional[Tensor] = None,
         **kwargs
     ) -> FLAMEOutput:
         '''
@@ -315,6 +352,7 @@ class FLAME(SMPL):
 
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
+        v_offsets = v_offsets if v_offsets is not None else self.v_offsets
 
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None:
@@ -333,7 +371,11 @@ class FLAME(SMPL):
             betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
-      
+
+        # print(shape_components.device, full_pose.device, self.v_template.device, shapedirs.device, self.posedirs.device, self.J_regressor.device, self.parents.device, self.lbs_weights.device, v_offsets.device)
+        # exit()
+        # print(self.upsample_lbs_weights.device, self.unique.device, self.faces_tensor.device)
+        # exit()
         vertices, joints, vT, jT, v_cano = lbs(
             shape_components, 
             full_pose, 
@@ -342,9 +384,12 @@ class FLAME(SMPL):
             self.posedirs,
             self.J_regressor, 
             self.parents,
-            self.lbs_weights, 
+            self.lbs_weights if not self.upsample else self.upsample_lbs_weights, 
             pose2rot=pose2rot,
             custom_out=True,  
+            v_offsets=v_offsets, 
+            upsample_unique=self.unique if self.upsample else None, 
+            faces=self.faces_tensor if self.upsample else None
         )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
@@ -372,7 +417,7 @@ class FLAME(SMPL):
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)
-
+        
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
@@ -461,7 +506,7 @@ class FLAMELayer(FLAME):
             -------
                 output: ModelOutput
                 A named tuple of type `ModelOutput`
-        '''
+        ''' 
         device, dtype = self.shapedirs.device, self.shapedirs.dtype
         if global_orient is None:
             batch_size = 1
@@ -533,7 +578,7 @@ class FLAMELayer(FLAME):
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)
-
+         
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 

@@ -15,7 +15,7 @@ from ..utils import (
     find_joint_kin_chain)
 from ..vertex_joint_selector import VertexJointSelector
 from .smplh import SMPLH
-
+from ..subdivide import subdivide, subdivide_inorder
 
 class SMPLX(SMPLH):
     '''
@@ -53,6 +53,7 @@ class SMPLX(SMPLH):
         age: str = 'adult',
         dtype=torch.float32,
         ext: str = 'npz',
+        upsample: bool = False,
         **kwargs
     ) -> None:
         ''' SMPLX model constructor
@@ -103,8 +104,8 @@ class SMPLX(SMPLH):
                 Which gender to load
             dtype: torch.dtype
                 The data type for the created variables
-        '''
-
+        ''' 
+        self.upsample = upsample
         # Load the model
         if osp.isdir(model_path):
             model_fn = 'SMPLX_{}.{ext}'.format(gender.upper(), ext=ext)
@@ -262,6 +263,13 @@ class SMPLX(SMPLH):
         ]
         return '\n'.join(msg)
 
+    def set_upsample(self): 
+        new_v, self.upsample_faces, unique = subdivide(v_template.detach().cpu().numpy(), self.faces) 
+        self.unique = torch.tensor(unique, dtype=torch.long, device=v_template.device)
+        self.upsample_lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, self.unique)
+        self.upsample_N = len(new_v)
+        self.upsample = True 
+           
     def forward(
         self,
         betas: Optional[Tensor] = None,
@@ -279,8 +287,7 @@ class SMPLX(SMPLH):
         pose2rot: bool = True,
         return_shaped: bool = True,
         v_template: Optional[Tensor] = None,
-        v_offsets: Optional[Tensor] = None,
-        upsample: bool = False,
+        v_offsets: Optional[Tensor] = None, 
         **kwargs
     ) -> SMPLXOutput:
         '''
@@ -353,15 +360,7 @@ class SMPLX(SMPLH):
         expression = expression if expression is not None else self.expression
         v_template = v_template if v_template is not None else self.v_template
  
-        if upsample:
-            if not hasattr(self, 'upsample_faces'): 
-                new_v, self.upsample_faces, unique = subdivide(v_template.detach().cpu().numpy(), self.faces) 
-                self.unique = torch.tensor(unique, dtype=torch.long, device=v_template.device)
-                self.upsample_lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, self.unique)
-
-                # assert
-                # assert offset shape matching 
-              
+        
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None:
             if hasattr(self, 'transl'):
@@ -404,12 +403,12 @@ class SMPLX(SMPLH):
             self.posedirs,
             self.J_regressor, 
             self.parents,
-            self.lbs_weights if not upsample else self.upsample_lbs_weights, 
+            self.lbs_weights if not self.upsample else self.upsample_lbs_weights, 
             v_offsets=v_offsets, 
             pose2rot=pose2rot,
             custom_out=True,  
-            upsample_unique=self.unique if upsample else None, 
-            faces=self.faces_tensor if upsample else None
+            upsample_unique=self.unique if self.upsample else None, 
+            faces=self.faces_tensor if self.upsample else None
         )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(

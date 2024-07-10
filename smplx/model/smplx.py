@@ -396,7 +396,7 @@ class SMPLX(SMPLH):
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints, vT, jT = lbs(
+        vertices, joints, vT, jT, v_cano = lbs(
             shape_components, 
             full_pose, 
             v_template,
@@ -410,7 +410,7 @@ class SMPLX(SMPLH):
             custom_out=True,  
             upsample_unique=self.unique if upsample else None, 
             faces=self.faces_tensor if upsample else None
-            )
+        )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
@@ -460,8 +460,7 @@ class SMPLX(SMPLH):
                              left_hand_pose=left_hand_pose,
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
-                            #  v_shaped=v_shaped,
-                            #  v_posed=v_posed,
+                             v_cano=v_cano, 
                              joints_transform=joints_transform,
                              full_pose=full_pose if return_full_pose else None)
         return output

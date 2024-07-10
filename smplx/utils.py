@@ -30,7 +30,7 @@ class ModelOutput:
     full_pose: Optional[Tensor] = None
     global_orient: Optional[Tensor] = None
     transl: Optional[Tensor] = None
-    v_shaped: Optional[Tensor] = None
+    v_cano: Optional[Tensor] = None
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -72,8 +72,7 @@ class SMPLXOutput(SMPLHOutput):
     expression: Optional[Tensor] = None
     jaw_pose: Optional[Tensor] = None
     joints_transform: Optional[Tensor] = None
-    v_posed: Optional[Tensor] = None
-
+    v_cano: Optional[Tensor] = None
 
 @dataclass
 class MANOOutput(ModelOutput):
@@ -87,6 +86,8 @@ class FLAMEOutput(ModelOutput):
     expression: Optional[Tensor] = None
     jaw_pose: Optional[Tensor] = None
     neck_pose: Optional[Tensor] = None
+    joints_transform: Optional[Tensor] = None
+    v_cano: Optional[Tensor] = None
 
 
 def find_joint_kin_chain(joint_id, kinematic_tree):

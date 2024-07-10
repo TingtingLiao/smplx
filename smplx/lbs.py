@@ -264,7 +264,7 @@ def lbs(
     verts = v_homo[:, :, :3, 0]
 
     if custom_out:
-        return verts, J_transformed, T, A 
+        return verts, J_transformed, T, A, v_posed
 
     return verts, J_transformed
 

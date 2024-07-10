@@ -5,7 +5,7 @@ import torch
 from matplotlib import cm as mpl_cm, colors as mpl_colors
 
 
-def smplx_segm_to_vertex_colors(part_segm, n_vertices, alpha=1.0):
+def segm_to_vertex_colors(part_segm, n_vertices, alpha=1.0):
     vertex_labels = np.zeros(n_vertices)
 
     for part_idx, (k, v) in enumerate(part_segm.items()):
@@ -38,8 +38,30 @@ def index_triangles_from_vertex_mask(vertex_mask, triangles):
                 break 
     return triangles[tri_ids]  
 
+class FlameSeg:
+    def __init__(self, flame_dir, device):
+        # flame: ['eye_region', 'neck', 'left_eyeball', 'right_eyeball', 'right_ear', 'right_eye_region', 'forehead', 'lips', 'nose', 'scalp', 'boundary', 'face', 'left_ear', 'left_eye_region'])
+         
+        self.segms = pkl.load(open(f"{flame_dir}/FLAME_masks.pkl", "rb"), encoding='latin1')
+        print(self.segms.keys())
+        self.device = device
+        self.N = 5023
+        self._vc = None
 
-class SMPLXSeg:
+    def get_triangles(self, part_name):
+        v_mask = np.zeros((self.N, 1))
+        v_mask[self.flame_segs[part_name]] = 1
+        triangles = index_triangles_from_vertex_mask(v_mask, self.flame_faces)
+        return torch.tensor(triangles, dtype=torch.long, device=self.device)
+
+    @property 
+    def vc(self):
+        if self._vc is None:
+            self._vc = segm_to_vertex_colors(self.segms, self.N)[:, :3]
+            self._vc = torch.tensor(self._vc, dtype=torch.float, device=self.device)
+        return self._vc 
+
+class SmplxSeg:
     def __init__(self, smplx_dir, device):
         #  'leftHand', 'rightHand', 
         #  'rightUpLeg', 'leftUpLeg'
@@ -63,7 +85,6 @@ class SMPLXSeg:
         self._vc = None
     
     def mapping_smplx_to_flame(self, flame_vid):
-        # flame: ['eye_region', 'neck', 'left_eyeball', 'right_eyeball', 'right_ear', 'right_eye_region', 'forehead', 'lips', 'nose', 'scalp', 'boundary', 'face', 'left_ear', 'left_eye_region'])
         for key in ['right_ear', 'left_ear', 'nose', 'lips']:
             if key in flame_vid:
                 return list(self.smplx_flame_vid[self.flame_segs["left_ear"]])
@@ -74,6 +95,9 @@ class SMPLXSeg:
         triangles = index_triangles_from_vertex_mask(v_mask, self.smplx_faces) 
         return torch.tensor(triangles, dtype=torch.long, device=self.device)
 
+    def get_vertex_ids(self, part_name):
+        return self.smplx_segs[part_name]
+
     def init_part_triangls(self):
         for part_name in self.smplx_segs.keys(): 
             setattr(self, part_name + '_tri', self.get_triangles(part_name))
@@ -81,7 +105,7 @@ class SMPLXSeg:
     @property 
     def vc(self):
         if self._vc is None:
-            self._vc = smplx_segm_to_vertex_colors(self.smplx_segs, self.N)[:, :3]
+            self._vc = segm_to_vertex_colors(self.smplx_segs, self.N)[:, :3]
             self._vc = torch.tensor(self._vc, dtype=torch.float, device=self.device)
         return self._vc 
   

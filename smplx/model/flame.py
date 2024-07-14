@@ -104,9 +104,14 @@ class FLAME(SMPL):
                 The data type for the created variables
         '''
         self.upsample = upsample
-    
-        model_fn = f'FLAME_{gender.upper()}.{ext}'
-        flame_path = os.path.join(model_path, model_fn)
+     
+        if osp.isdir(model_path): 
+            model_fn = f'FLAME_{gender.upper()}.{ext}'
+            flame_path = os.path.join(model_path, model_fn)
+        else: 
+            flame_path = model_path
+            model_path = os.path.dirname(model_path)
+
         assert osp.exists(flame_path), 'Path {} does not exist!'.format(
             flame_path)
         if ext == 'npz':
@@ -358,8 +363,7 @@ class FLAME(SMPL):
         if transl is None:
             if hasattr(self, 'transl'):
                 transl = self.transl
-        # print(global_orient.shape, neck_pose.shape, jaw_pose.shape, leye_pose.shape, reye_pose.shape)
-        # exit()
+        
         full_pose = torch.cat(
             [global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1).reshape(-1, 5, 3)
         
@@ -371,11 +375,7 @@ class FLAME(SMPL):
             betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
-
-        # print(shape_components.device, full_pose.device, self.v_template.device, shapedirs.device, self.posedirs.device, self.J_regressor.device, self.parents.device, self.lbs_weights.device, v_offsets.device)
-        # exit()
-        # print(self.upsample_lbs_weights.device, self.unique.device, self.faces_tensor.device)
-        # exit()
+ 
         vertices, joints, vT, jT, v_cano = lbs(
             shape_components, 
             full_pose, 

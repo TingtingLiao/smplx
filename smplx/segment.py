@@ -39,12 +39,42 @@ def index_triangles_from_vertex_mask(vertex_mask, triangles):
     return triangles[tri_ids]  
 
 class FlameSeg:
-    def __init__(self, flame_dir, device):
-        # flame: ['eye_region', 'neck', 'left_eyeball', 'right_eyeball', 'right_ear', 'right_eye_region', 'forehead', 'lips', 'nose', 'scalp', 'boundary', 'face', 'left_ear', 'left_eye_region'])
+    def __init__(self, flame_dir, device, N=5023): 
+        # ---------face 
+        # 'eye_region', 'right_eye_region', 'left_eye_region'
+        # 'forehead', 'lips', 'nose',
+        # 'left_eyeball', 'right_eyeball', 
+        # 'right_ear',    'left_ear' 
+        # -----------
+        # 'neck',  
+          
+        # 'scalp', 
+        # 'boundary', 
+        # 'face',    
         self.segms = pkl.load(open(f"{flame_dir}/FLAME_masks.pkl", "rb"), encoding='latin1')
         self.device = device
-        self.N = 5023
+        self.N = N
         self._vc = None
+    
+    @property 
+    def part2color(self):
+        return {
+            'face': [255, 85, 0],
+            'left_eyeball':  [255, 85, 0],
+            'right_eyeball': [255, 85, 0],
+            'left_ear': [255, 85, 0],
+            'right_ear': [255, 85, 0],
+            
+            'scalp': [0, 85, 255], 
+
+            'neck': [255, 0, 255],
+
+            'lips': [0, 0, 255],
+
+            'left_eyeball': [255, 0, 170], 
+            'right_eyeball': [255, 0, 170],
+
+        }
 
     def get_triangles(self, part_name):
         v_mask = np.zeros((self.N, 1))
@@ -55,12 +85,22 @@ class FlameSeg:
     def get_vertices(self, vertices, part_name):
         return vertices[self.segms[part_name]]
 
+    # @property 
+    # def vc(self):
+    #     if self._vc is None:
+    #         self._vc = segm_to_vertex_colors(self.segms, self.N)[:, :3]
+    #         self._vc = torch.tensor(self._vc, dtype=torch.float, device=self.device)
+    #     return self._vc 
+
     @property 
     def vc(self):
         if self._vc is None:
-            self._vc = segm_to_vertex_colors(self.segms, self.N)[:, :3]
-            self._vc = torch.tensor(self._vc, dtype=torch.float, device=self.device)
+            vc = np.zeros((self.N, 3))
+            for part_name, color in self.part2color.items():
+                vc[self.segms[part_name]] = list(map(lambda x: x / 255, color))
+            self._vc = torch.tensor(vc, dtype=torch.float, device=self.device)
         return self._vc 
+
 
 class SmplxSeg:
     def __init__(self, smplx_dir, device):

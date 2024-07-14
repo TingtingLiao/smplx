@@ -27,6 +27,7 @@ class FLAME(SMPL):
         self,
         model_path: str,
         data_struct=None,
+        num_betas=300,
         num_expression_coeffs=10,
         create_expression: bool = True,
         expression: Optional[Tensor] = None,
@@ -176,7 +177,8 @@ class FLAME(SMPL):
 
         
         shapedirs = data_struct.shapedirs
-        self.register_buffer("shapedirs", to_tensor(to_np(shapedirs[..., 0:self.SHAPE_SPACE_DIM]), dtype=self.dtype))
+        num_betas = min(num_betas, shapedirs.shape[-1])
+        self.register_buffer("shapedirs", to_tensor(to_np(shapedirs[..., 0:num_betas]), dtype=self.dtype))
  
         if len(shapedirs.shape) < 3:
             shapedirs = shapedirs[:, :, None]

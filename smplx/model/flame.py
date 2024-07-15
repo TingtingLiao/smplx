@@ -131,6 +131,7 @@ class FLAME(SMPL):
             batch_size=batch_size,
             gender=gender,
             ext=ext,
+            num_betas=num_betas, 
             **kwargs)
       
         self.use_face_contour = use_face_contour
@@ -415,7 +416,7 @@ class FLAME(SMPL):
         landmarks = vertices2landmarks(vertices, self.faces_tensor,
                                        lmk_faces_idx,
                                        lmk_bary_coords)
-
+      
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)

@@ -88,10 +88,16 @@ def find_dynamic_lmk_idx_and_bcoords(
             batch_size, 1, 1)
     for idx in range(len(neck_kin_chain)):
         rel_rot_mat = torch.bmm(rot_mats[:, idx], rel_rot_mat)
+    
+    # the origin code is wrong, the negative sign should be removed
+    # y_rot_angle = torch.round(
+    #     torch.clamp(-rot_mat_to_euler(rel_rot_mat) * 180.0 / np.pi,
+    #                 max=39)).to(dtype=torch.long)
 
     y_rot_angle = torch.round(
-        torch.clamp(-rot_mat_to_euler(rel_rot_mat) * 180.0 / np.pi,
+        torch.clamp(rot_mat_to_euler(rel_rot_mat) * 180.0 / np.pi,
                     max=39)).to(dtype=torch.long)
+ 
     neg_mask = y_rot_angle.lt(0).to(dtype=torch.long)
     mask = y_rot_angle.lt(-39).to(dtype=torch.long)
     neg_vals = mask * 78 + (1 - mask) * (39 - y_rot_angle)

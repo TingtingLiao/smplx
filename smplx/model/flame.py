@@ -211,45 +211,14 @@ class FLAME(SMPL):
             expression_param = nn.Parameter(default_expression,
                                             requires_grad=True)
             self.register_parameter('expression', expression_param)
-
-        # The pickle file that contains the barycentric coordinates for
-        # regressing the landmarks
-        landmark_bcoord_filename = osp.join(
-            model_path, 'flame_static_embedding.pkl')
-
-        with open(landmark_bcoord_filename, 'rb') as fp:
-            landmarks_data = pickle.load(fp, encoding='latin1')
-
-        lmk_faces_idx = landmarks_data['lmk_face_idx'].astype(np.int64)
-        self.register_buffer('lmk_faces_idx',
-                             torch.tensor(lmk_faces_idx, dtype=torch.long))
-        lmk_bary_coords = landmarks_data['lmk_b_coords']
-        self.register_buffer('lmk_bary_coords',
-                             torch.tensor(lmk_bary_coords, dtype=dtype))
-        if self.use_face_contour:
-            face_contour_path = os.path.join(
-                model_path, 'flame_dynamic_embedding.npy')
-            contour_embeddings = np.load(face_contour_path,
-                                         allow_pickle=True,
-                                         encoding='latin1')[()]
-
-            dynamic_lmk_faces_idx = np.array(
-                contour_embeddings['lmk_face_idx'], dtype=np.int64)
-            dynamic_lmk_faces_idx = torch.tensor(
-                dynamic_lmk_faces_idx,
-                dtype=torch.long)
-            self.register_buffer('dynamic_lmk_faces_idx',
-                                 dynamic_lmk_faces_idx)
-
-            dynamic_lmk_b_coords = torch.tensor(
-                contour_embeddings['lmk_b_coords'], dtype=dtype)
-            self.register_buffer(
-                'dynamic_lmk_bary_coords', dynamic_lmk_b_coords)
-
-            neck_kin_chain = find_joint_kin_chain(self.NECK_IDX, self.parents)
-            self.register_buffer(
-                'neck_kin_chain',
-                torch.tensor(neck_kin_chain, dtype=torch.long))
+ 
+        landmark_bcoord_filename = osp.join(model_path, 'landmark_embedding.npy')  
+        landmarks_data = np.load(landmark_bcoord_filename, allow_pickle=True, encoding='latin1')[()] 
+        self.register_buffer('lmk_faces_idx', torch.tensor(landmarks_data['static_lmk_faces_idx'], dtype=torch.long)) 
+        self.register_buffer('lmk_bary_coords', torch.tensor(landmarks_data['static_lmk_bary_coords'], dtype=dtype))   
+        self.register_buffer('dynamic_lmk_faces_idx', torch.tensor(landmarks_data['dynamic_lmk_faces_idx'], dtype=torch.long))
+        self.register_buffer('dynamic_lmk_bary_coords', torch.tensor(landmarks_data['dynamic_lmk_bary_coords'], dtype=dtype))
+        self.register_buffer('neck_kin_chain', torch.tensor(find_joint_kin_chain(1, self.parents), dtype=torch.long))
         
         if upsample:
             self.set_upsample()
@@ -395,23 +364,23 @@ class FLAME(SMPL):
             faces=self.faces_tensor if self.upsample else None
         )
 
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
-            dim=0).expand(batch_size, -1).contiguous()
-        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(
-            batch_size, 1, 1)
+        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1).contiguous()
+        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(batch_size, 1, 1)
+
         if self.use_face_contour:
-            lmk_idx_and_bcoords = find_dynamic_lmk_idx_and_bcoords(
+            dyn_lmk_faces_idx, dyn_lmk_bary_coords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
                 self.dynamic_lmk_bary_coords,
                 self.neck_kin_chain,
                 pose2rot=True,
-            )
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = lmk_idx_and_bcoords
-            lmk_faces_idx = torch.cat([lmk_faces_idx,
-                                       dyn_lmk_faces_idx], 1)
+            ) 
+            # lmk_faces_idx = torch.cat([lmk_faces_idx, dyn_lmk_faces_idx], 1)
+            # lmk_bary_coords = torch.cat(
+            #     [lmk_bary_coords.expand(batch_size, -1, -1), dyn_lmk_bary_coords], 1)
+
+            lmk_faces_idx = torch.cat([dyn_lmk_faces_idx, lmk_faces_idx], 1)
             lmk_bary_coords = torch.cat(
-                [lmk_bary_coords.expand(batch_size, -1, -1),
-                 dyn_lmk_bary_coords], 1)
+                [dyn_lmk_bary_coords, lmk_bary_coords.expand(batch_size, -1, -1)], 1)
 
         landmarks = vertices2landmarks(vertices, self.faces_tensor,
                                        lmk_faces_idx,

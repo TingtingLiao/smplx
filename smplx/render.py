@@ -79,7 +79,7 @@ class Renderer(torch.nn.Module):
                 mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear-mipmap-linear')  # [B, H, W, 3]
             color = torch.where(rast[..., 3:] > 0, albedo, torch.tensor(0).to(albedo.device))  # remove background
         elif mesh.vc is not None:
-            color, _ = dr.interpolate(mesh.vc[None, ..., :3].float(), rast, mesh.f)
+            color, _ = dr.interpolate(mesh.vc[None, ..., :3].contiguous().float(), rast, mesh.f)
         else:
             color = None 
  

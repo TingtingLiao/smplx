@@ -258,7 +258,7 @@ class FLAME(SMPL):
         self.N = len(new_v)
         self.upsample = True 
 
-    def set_params(self, **params):
+    def set_params(self, params):
         ''' Set the parameters of the model '''
         for param_name, param in params.items():
             if hasattr(self, param_name):

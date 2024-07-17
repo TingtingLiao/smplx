@@ -196,8 +196,7 @@ class FLAME(SMPL):
             num_expression_coeffs = min(num_expression_coeffs, self.EXPRESSION_SPACE_DIM)
 
         self._num_expression_coeffs = num_expression_coeffs
-      
-         
+       
         expr_dirs = shapedirs[:, :, expr_start_idx:expr_end_idx]
         self.register_buffer(
             'expr_dirs', to_tensor(to_np(expr_dirs), dtype=dtype))
@@ -240,7 +239,7 @@ class FLAME(SMPL):
 
     def name(self) -> str:
         return 'FLAME'
-
+    
     def extra_repr(self):
         msg = [
             super(FLAME, self).extra_repr(),
@@ -258,6 +257,14 @@ class FLAME(SMPL):
         self.register_buffer('upsample_lbs_weights', upsample_lbs_weights) 
         self.N = len(new_v)
         self.upsample = True 
+
+    def set_params(self, **params):
+        ''' Set the parameters of the model '''
+        for param_name, param in params.items():
+            if hasattr(self, param_name):
+                setattr(self, param_name, param)
+            else:
+                raise ValueError('Parameter {} does not exist'.format(param_name))
 
     def forward(
         self,

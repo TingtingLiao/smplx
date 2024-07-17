@@ -155,7 +155,7 @@ def vertices2landmarks(
     landmarks = torch.einsum('blfi,blf->bli', [lmk_vertices, lmk_bary_coords])
     return landmarks
 
-def pose_blend_shape(
+def pose_blend_shapes(
     pose: Tensor,
     posedirs: Tensor,
     pose2rot: bool,
@@ -256,20 +256,15 @@ def lbs(
 
     batch_size = max(betas.shape[0], pose.shape[0])
     device, dtype = betas.device, betas.dtype
-    
-    # print('smplx: v_template ', v_template.shape, )
-    # print('smplx: betas ', betas.shape, )
-    # print('smplx: shapedirs ', shapedirs.shape, )
 
-    # Add shape contribution
+    # Add shape blend shape 
     v_shaped = v_template + blend_shapes(betas, shapedirs)
      
-    # Get the joints
-    # NxJx3 array
+    # Get the joints NxJx3 array
     J = vertices2joints(J_regressor, v_shaped)
 
-    # 3. Add pose blend shapes 
-    pose_offsets, rot_mats = pose_blend_shape(pose, posedirs, pose2rot, True)
+    # Add pose blend shapes 
+    pose_offsets, rot_mats = pose_blend_shapes(pose, posedirs, pose2rot, True)
     v_posed = pose_offsets + v_shaped
 
     # upsampling 

@@ -155,6 +155,47 @@ def vertices2landmarks(
     landmarks = torch.einsum('blfi,blf->bli', [lmk_vertices, lmk_bary_coords])
     return landmarks
 
+def pose_blend_shape(
+    pose: Tensor,
+    posedirs: Tensor,
+    pose2rot: bool,
+    return_rotmat: bool = False,
+):
+    '''
+    Calculates the pose blend shape offset 
+    
+    Parameters
+    ----------
+    pose: torch.tensor Bx(J + 1) * 3 or Bx(J + 1) * 9
+        The pose parameters in axis-angle format or rotation matrices
+    posedirs: torch.tensor Px(V * 3)
+        The pose PCA coefficients
+    pose2rot: bool
+        Flag on whether to convert the input pose tensor to rotation
+
+    Returns
+    -------
+    pose_offsets: torch.tensor BxVx3
+        The pose blend shape offsets
+    rot_mats: torch.tensor Bx(J + 1) * 3 x 3
+        The rotation matrices for the pose
+    '''
+    batch = pose.shape[0]
+    ident = torch.eye(3, dtype=pose.dtype, device=pose.device)
+    
+    if pose2rot:
+        rot_mats = batch_rodrigues(pose.view(-1, 3)).view([batch, -1, 3, 3])  
+    else:
+        rot_mats = pose.view(batch, -1, 3, 3) 
+
+    pose_feature = (rot_mats[:, 1:, :, :] - ident).view(batch, -1) 
+    pose_offsets = torch.matmul(pose_feature, posedirs).view(batch, -1, 3)
+
+    if return_rotmat:
+        return pose_offsets, rot_mats
+
+    return pose_offsets
+
 
 def lbs(
     betas: Tensor,
@@ -215,35 +256,23 @@ def lbs(
 
     batch_size = max(betas.shape[0], pose.shape[0])
     device, dtype = betas.device, betas.dtype
+    
+    # print('smplx: v_template ', v_template.shape, )
+    # print('smplx: betas ', betas.shape, )
+    # print('smplx: shapedirs ', shapedirs.shape, )
 
     # Add shape contribution
     v_shaped = v_template + blend_shapes(betas, shapedirs)
-
+     
     # Get the joints
     # NxJx3 array
     J = vertices2joints(J_regressor, v_shaped)
 
-    # 3. Add pose blend shapes
-    # N x J x 3 x 3
-    ident = torch.eye(3, dtype=dtype, device=device)
-    if pose2rot:
-        rot_mats = batch_rodrigues(pose.view(-1, 3)).view(
-            [batch_size, -1, 3, 3])
-
-        pose_feature = (rot_mats[:, 1:, :, :] - ident).view([batch_size, -1])
-        # (N x P) x (P, V * 3) -> N x V x 3
-        pose_offsets = torch.matmul(
-            pose_feature, posedirs).view(batch_size, -1, 3)
-    else:
-        pose_feature = pose[:, 1:].view(batch_size, -1, 3, 3) - ident
-        rot_mats = pose.view(batch_size, -1, 3, 3)
-
-        pose_offsets = torch.matmul(pose_feature.view(batch_size, -1),
-                                    posedirs).view(batch_size, -1, 3)
-
+    # 3. Add pose blend shapes 
+    pose_offsets, rot_mats = pose_blend_shape(pose, posedirs, pose2rot, True)
     v_posed = pose_offsets + v_shaped
 
-    # todo upsampling 
+    # upsampling 
     if upsample_unique is not None: 
         assert faces is not None, "faces must be provided if upsampling"  
         v_posed = subdivide_inorder(v_posed.squeeze(0), faces, upsample_unique).unsqueeze(0)

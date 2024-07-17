@@ -31,7 +31,7 @@ class FLAME(SMPL):
         num_expression_coeffs=10,
         create_expression: bool = True,
         expression: Optional[Tensor] = None,
-        create_v_offsets: bool = True,
+        create_v_offsets: bool = False,
         v_offsets: Optional[Tensor] = None,        
         create_neck_pose: bool = True,
         neck_pose: Optional[Tensor] = None,
@@ -273,6 +273,11 @@ class FLAME(SMPL):
         return_full_pose: bool = False,
         pose2rot: bool = True,
         v_offsets: Optional[Tensor] = None,
+        shapedirs: Optional[Tensor] = None, 
+        posedirs: Optional[Tensor] = None,
+        v_template: Optional[Tensor] = None,
+        lbs_weights: Optional[Tensor] = None,
+        J_regressor: Optional[Tensor] = None,
         **kwargs
     ) -> FLAMEOutput:
         '''
@@ -329,7 +334,9 @@ class FLAME(SMPL):
 
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
-        v_offsets = v_offsets if v_offsets is not None else self.v_offsets
+        if v_offsets is None:
+            if hasattr(self, 'v_offsets'):
+                v_offsets = self.v_offsets 
 
         apply_trans = transl is not None or hasattr(self, 'transl')
         if transl is None:
@@ -346,17 +353,27 @@ class FLAME(SMPL):
         if scale > 1:
             betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
-        shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
+
+        v_template = v_template if v_template is not None else self.v_template
+        posedirs = posedirs if posedirs is not None else self.posedirs 
+        if shapedirs is None:
+            shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)  
  
+        if lbs_weights is None: 
+            lbs_weights = self.lbs_weights if not self.upsample else self.upsample_lbs_weights 
+
+        if J_regressor is None:
+            J_regressor = self.J_regressor
+
         vertices, joints, vT, jT, v_cano = lbs(
             shape_components, 
             full_pose, 
-            self.v_template,
+            v_template,
             shapedirs, 
-            self.posedirs,
-            self.J_regressor, 
+            posedirs,
+            J_regressor, 
             self.parents,
-            self.lbs_weights if not self.upsample else self.upsample_lbs_weights, 
+            lbs_weights, 
             pose2rot=pose2rot,
             custom_out=True,  
             v_offsets=v_offsets, 

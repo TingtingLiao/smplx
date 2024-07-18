@@ -372,7 +372,7 @@ class FLAME(SMPL):
         if J_regressor is None:
             J_regressor = self.J_regressor
 
-        vertices, joints, vT, jT, v_cano = lbs(
+        vertices, joints, vT, jT, v_cano, joints_cano = lbs(
             shape_components, 
             full_pose, 
             v_template,
@@ -397,23 +397,17 @@ class FLAME(SMPL):
                 self.dynamic_lmk_bary_coords,
                 self.neck_kin_chain,
                 pose2rot=True,
-            ) 
-            # lmk_faces_idx = torch.cat([lmk_faces_idx, dyn_lmk_faces_idx], 1)
-            # lmk_bary_coords = torch.cat(
-            #     [lmk_bary_coords.expand(batch_size, -1, -1), dyn_lmk_bary_coords], 1)
-
+            )  
             lmk_faces_idx = torch.cat([dyn_lmk_faces_idx, lmk_faces_idx], 1)
             lmk_bary_coords = torch.cat(
                 [dyn_lmk_bary_coords, lmk_bary_coords.expand(batch_size, -1, -1)], 1)
 
-        landmarks = vertices2landmarks(vertices, self.faces_tensor,
-                                       lmk_faces_idx,
-                                       lmk_bary_coords)
-      
+        landmarks = vertices2landmarks(vertices, self.faces_tensor, lmk_faces_idx, lmk_bary_coords)
+ 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)
-        
+  
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 
@@ -435,6 +429,7 @@ class FLAME(SMPL):
                              jaw_pose=jaw_pose,
                              joints_transform=joints_transform, 
                              v_cano=v_cano, 
+                             joints_cano=joints_cano, 
                              full_pose=full_pose if return_full_pose else None)
         return output
 
@@ -537,13 +532,15 @@ class FLAMELayer(FLAME):
         shape_components = torch.cat([betas, expression], dim=-1)
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints, vT, jT, v_cano = lbs(
+ 
+        vertices, joints, vT, jT, v_cano, J_cano = lbs(
             shape_components, 
             full_pose, 
             self.v_template,
             shapedirs, 
             self.posedirs,
-            self.J_regressor, self.parents,
+            self.J_regressor, 
+            self.parents,
             self.lbs_weights, 
             pose2rot=False,
             custom_out=True,  
@@ -570,7 +567,7 @@ class FLAMELayer(FLAME):
         landmarks = vertices2landmarks(vertices, self.faces_tensor,
                                        lmk_faces_idx,
                                        lmk_bary_coords)
-
+ 
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)
@@ -587,14 +584,16 @@ class FLAMELayer(FLAME):
             vertices += transl.unsqueeze(dim=1)
             joints_transform[:, :, :3, 3] += transl.unsqueeze(dim=1)
 
-        output = FLAMEOutput(vertices=vertices if return_verts else None,
-                             joints=joints,
-                             betas=betas,
-                             expression=expression,
-                             global_orient=global_orient,
-                             neck_pose=neck_pose,
-                             jaw_pose=jaw_pose,
-                             joints_transform=joints_transform,
-                             full_pose=full_pose if return_full_pose else None)
+        output = FLAMEOutput(
+            vertices=vertices if return_verts else None,
+            joints=joints,
+            betas=betas,
+            expression=expression,
+            global_orient=global_orient,
+            neck_pose=neck_pose,
+            jaw_pose=jaw_pose,
+            joints_transform=joints_transform,
+            full_pose=full_pose if return_full_pose else None
+        )
         return output
 

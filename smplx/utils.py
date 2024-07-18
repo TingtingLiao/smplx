@@ -88,6 +88,7 @@ class FLAMEOutput(ModelOutput):
     neck_pose: Optional[Tensor] = None
     joints_transform: Optional[Tensor] = None
     v_cano: Optional[Tensor] = None
+    joints_cano: Optional[Tensor] = None
 
 
 def find_joint_kin_chain(joint_id, kinematic_tree):

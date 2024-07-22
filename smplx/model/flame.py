@@ -371,7 +371,7 @@ class FLAME(SMPL):
 
         if J_regressor is None:
             J_regressor = self.J_regressor
-
+ 
         vertices, joints, vT, jT, v_cano, joints_cano = lbs(
             shape_components, 
             full_pose, 

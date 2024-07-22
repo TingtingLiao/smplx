@@ -62,7 +62,7 @@ class FLAME(SMPL):
             create_expression: bool, optional
                 Flag for creating a member variable for the expression space
                 (default = True).
-            expression: torch.tensor, optional, Bx10
+            expression: torch.tensor, optional, Bx100 
                 The default value for the expression member variable.
                 (default = None)
             create_v_offsets: bool, optional
@@ -131,7 +131,7 @@ class FLAME(SMPL):
             batch_size=batch_size,
             gender=gender,
             ext=ext,
-            num_betas=num_betas, 
+            num_betas=self.SHAPE_SPACE_DIM, 
             **kwargs)
       
         self.use_face_contour = use_face_contour
@@ -139,7 +139,6 @@ class FLAME(SMPL):
         self.vertex_joint_selector.extra_joints_idxs = to_tensor(
             [], dtype=torch.long)
  
-
         if create_neck_pose:
             if neck_pose is None:
                 default_neck_pose = torch.zeros([batch_size, 3], dtype=dtype)
@@ -177,38 +176,15 @@ class FLAME(SMPL):
             self.register_parameter('reye_pose', reye_pose_param)
 
         
-        shapedirs = data_struct.shapedirs
-        num_betas = min(num_betas, shapedirs.shape[-1])
-        self.register_buffer("shapedirs", to_tensor(to_np(shapedirs[..., 0:num_betas]), dtype=self.dtype))
+        self.register_buffer("shapedirs", to_tensor(to_np(data_struct.shapedirs), dtype=self.dtype))
  
-        if len(shapedirs.shape) < 3:
-            shapedirs = shapedirs[:, :, None]
-        if (shapedirs.shape[-1] < self.SHAPE_SPACE_DIM +
-                self.EXPRESSION_SPACE_DIM):
-            print(f'WARNING: You are using a {self.name()} model, with only'
-                  ' 10 shape and 10 expression coefficients.')
-            expr_start_idx = 10
-            expr_end_idx = 20
-            num_expression_coeffs = min(num_expression_coeffs, 10)
-        else:
-            expr_start_idx = self.SHAPE_SPACE_DIM
-            expr_end_idx = self.SHAPE_SPACE_DIM + num_expression_coeffs
-            num_expression_coeffs = min(num_expression_coeffs, self.EXPRESSION_SPACE_DIM)
-
-        self._num_expression_coeffs = num_expression_coeffs
-       
-        expr_dirs = shapedirs[:, :, expr_start_idx:expr_end_idx]
-        self.register_buffer(
-            'expr_dirs', to_tensor(to_np(expr_dirs), dtype=dtype))
-
         if create_expression:
             if expression is None:
                 default_expression = torch.zeros(
                     [batch_size, self.num_expression_coeffs], dtype=dtype)
             else:
                 default_expression = torch.tensor(expression, dtype=dtype)
-            expression_param = nn.Parameter(default_expression,
-                                            requires_grad=True)
+            expression_param = nn.Parameter(default_expression, requires_grad=True)
             self.register_parameter('expression', expression_param)
  
         landmark_bcoord_filename = osp.join(model_path, 'landmark_embedding.npy')  
@@ -235,7 +211,7 @@ class FLAME(SMPL):
 
     @property
     def num_expression_coeffs(self):
-        return self._num_expression_coeffs
+        return self.EXPRESSION_SPACE_DIM
 
     def name(self) -> str:
         return 'FLAME'
@@ -341,6 +317,14 @@ class FLAME(SMPL):
 
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
+
+        if betas.shape[1] < self.SHAPE_SPACE_DIM:
+            zero_beta = torch.zeros(betas.shape[0], self.SHAPE_SPACE_DIM - betas.shape[1], dtype=betas.dtype, device=betas.device)
+            betas = torch.cat([betas, zero_beta], dim=1)
+        if expression.shape[1] < self.EXPRESSION_SPACE_DIM:
+            zero_expr = torch.zeros(expression.shape[0], self.EXPRESSION_SPACE_DIM - expression.shape[1], dtype=expression.dtype, device=expression.device)
+            expression = torch.cat([expression, zero_expr], dim=1)
+
         if v_offsets is None:
             if hasattr(self, 'v_offsets'):
                 v_offsets = self.v_offsets 
@@ -364,7 +348,7 @@ class FLAME(SMPL):
         v_template = v_template if v_template is not None else self.v_template
         posedirs = posedirs if posedirs is not None else self.posedirs 
         if shapedirs is None:
-            shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)  
+            shapedirs = self.shapedirs 
  
         if lbs_weights is None: 
             lbs_weights = self.lbs_weights if not self.upsample else self.upsample_lbs_weights 
@@ -518,7 +502,7 @@ class FLAMELayer(FLAME):
             reye_pose = torch.eye(3, device=device, dtype=dtype).view(
                 1, 1, 3, 3).expand(batch_size, -1, -1, -1).contiguous()
         if betas is None:
-            betas = torch.zeros([batch_size, self.num_betas],
+            betas = torch.zeros([batch_size, self.SHAPE_SPACE_DIM],
                                 dtype=dtype, device=device)
         if expression is None:
             expression = torch.zeros([batch_size, self.num_expression_coeffs],

@@ -1,5 +1,5 @@
 # SMPLX 
-A smplx toolkit. 
+A smplx toolkit
 
 ## Todo 
 - add flame 

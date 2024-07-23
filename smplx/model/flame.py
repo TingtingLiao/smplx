@@ -26,9 +26,7 @@ class FLAME(SMPL):
     def __init__(
         self,
         model_path: str,
-        data_struct=None,
-        num_betas=300,
-        num_expression_coeffs=10,
+        data_struct=None,  
         create_expression: bool = True,
         expression: Optional[Tensor] = None,
         create_v_offsets: bool = False,
@@ -55,10 +53,7 @@ class FLAME(SMPL):
             ----------
             model_path: str
                 The path to the folder or to the file where the model
-                parameters are stored
-            num_expression_coeffs: int, optional
-                Number of expression components to use
-                (default = 10).
+                parameters are stored 
             create_expression: bool, optional
                 Flag for creating a member variable for the expression space
                 (default = True).
@@ -181,7 +176,7 @@ class FLAME(SMPL):
         if create_expression:
             if expression is None:
                 default_expression = torch.zeros(
-                    [batch_size, self.num_expression_coeffs], dtype=dtype)
+                    [batch_size, self.EXPRESSION_SPACE_DIM], dtype=dtype)
             else:
                 default_expression = torch.tensor(expression, dtype=dtype)
             expression_param = nn.Parameter(default_expression, requires_grad=True)
@@ -219,7 +214,7 @@ class FLAME(SMPL):
     def extra_repr(self):
         msg = [
             super(FLAME, self).extra_repr(),
-            f'Number of Expression Coefficients: {self.num_expression_coeffs}',
+            f'Number of Expression Coefficients: {self.EXPRESSION_SPACE_DIM}',
             f'Use face contour: {self.use_face_contour}',
         ]
         return '\n'.join(msg)
@@ -505,7 +500,7 @@ class FLAMELayer(FLAME):
             betas = torch.zeros([batch_size, self.SHAPE_SPACE_DIM],
                                 dtype=dtype, device=device)
         if expression is None:
-            expression = torch.zeros([batch_size, self.num_expression_coeffs],
+            expression = torch.zeros([batch_size, self.EXPRESSION_SPACE_DIM],
                                      dtype=dtype, device=device)
         if transl is None:
             transl = torch.zeros([batch_size, 3], dtype=dtype, device=device)

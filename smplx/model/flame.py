@@ -166,8 +166,7 @@ class FLAME(SMPL):
                 default_reye_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_reye_pose = torch.tensor(reye_pose, dtype=dtype)
-            reye_pose_param = nn.Parameter(default_reye_pose,
-                                           requires_grad=True)
+            reye_pose_param = nn.Parameter(default_reye_pose, requires_grad=True)
             self.register_parameter('reye_pose', reye_pose_param)
 
         
@@ -185,9 +184,9 @@ class FLAME(SMPL):
         landmark_bcoord_filename = osp.join(model_path, 'landmark_embedding.npy')  
         landmarks_data = np.load(landmark_bcoord_filename, allow_pickle=True, encoding='latin1')[()] 
         self.register_buffer('lmk_faces_idx', torch.tensor(landmarks_data['static_lmk_faces_idx'], dtype=torch.long)) 
-        self.register_buffer('lmk_bary_coords', torch.tensor(landmarks_data['static_lmk_bary_coords'], dtype=dtype))   
-        self.register_buffer('dynamic_lmk_faces_idx', torch.tensor(landmarks_data['dynamic_lmk_faces_idx'], dtype=torch.long))
-        self.register_buffer('dynamic_lmk_bary_coords', torch.tensor(landmarks_data['dynamic_lmk_bary_coords'], dtype=dtype))
+        self.register_buffer('lmk_bary_coords', torch.tensor(landmarks_data['static_lmk_bary_coords'], dtype=dtype))    
+        self.register_buffer('dynamic_lmk_faces_idx', landmarks_data['dynamic_lmk_faces_idx'].long())
+        self.register_buffer('dynamic_lmk_bary_coords', landmarks_data['dynamic_lmk_bary_coords'].to(dtype)) 
         self.register_buffer('neck_kin_chain', torch.tensor(find_joint_kin_chain(1, self.parents), dtype=torch.long))
         
         if upsample:

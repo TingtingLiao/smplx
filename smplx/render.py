@@ -22,16 +22,11 @@ def scale_img_nhwc(x, size, mag='bilinear', min='bilinear'):
 
 class Renderer(torch.nn.Module):
     def __init__(self, gui=False):
-        super().__init__()   
- 
-        try:
+        super().__init__()    
+        if not gui or os.name == 'nt': 
+            self.glctx = dr.RasterizeCudaContext()
+        else:
             self.glctx = dr.RasterizeGLContext()
-        except:
-            self.glctx = dr.RasterizeCudaContext()  
-        # if not gui or os.name == 'nt': 
-        #     self.glctx = dr.RasterizeCudaContext()
-        # else:
-        #     self.glctx = dr.RasterizeGLContext()
 
     def forward(self, mesh, mvp,
                 h=512,

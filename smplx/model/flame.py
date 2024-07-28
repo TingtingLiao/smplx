@@ -311,7 +311,7 @@ class FLAME(SMPL):
 
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
-
+        
         if betas.shape[1] < self.SHAPE_SPACE_DIM:
             zero_beta = torch.zeros(betas.shape[0], self.SHAPE_SPACE_DIM - betas.shape[1], dtype=betas.dtype, device=betas.device)
             betas = torch.cat([betas, zero_beta], dim=1)

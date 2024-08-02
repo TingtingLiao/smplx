@@ -309,14 +309,16 @@ class FLAME(SMPL):
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
 
-        batch_size = max(len(betas), len(global_orient), len(jaw_pose), len(leye_pose), len(reye_pose))
-        global_orient = global_orient.expand(batch_size, -1)
-        jaw_pose = jaw_pose.expand(batch_size, -1)
-        leye_pose = leye_pose.expand(batch_size, -1)
-        reye_pose = reye_pose.expand(batch_size, -1)
-        neck_pose = neck_pose.expand(batch_size, -1)
-        betas = betas.expand(batch_size, -1)
-        expression = expression.expand(batch_size, -1)
+        batch_size = max(len(betas), len(global_orient), len(jaw_pose), len(leye_pose), len(reye_pose), len(neck_pose), len(expression))
+        if not batch_size == self.batch_size:
+            assert self.batch_size == 1, 'Batch size mismatch' 
+            global_orient = global_orient.expand(batch_size, -1)
+            jaw_pose = jaw_pose.expand(batch_size, -1)
+            leye_pose = leye_pose.expand(batch_size, -1)
+            reye_pose = reye_pose.expand(batch_size, -1)
+            neck_pose = neck_pose.expand(batch_size, -1)
+            betas = betas.expand(batch_size, -1)
+            expression = expression.expand(batch_size, -1)
         
         if betas.shape[1] < self.SHAPE_SPACE_DIM:
             zero_beta = torch.zeros(betas.shape[0], self.SHAPE_SPACE_DIM - betas.shape[1], dtype=betas.dtype, device=betas.device)

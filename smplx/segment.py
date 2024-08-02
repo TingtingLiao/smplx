@@ -47,7 +47,6 @@ class FlameSeg:
         # 'right_ear',    'left_ear' 
         # -----------
         # 'neck',  
-          
         # 'scalp', 
         # 'boundary', 
         # 'face',    
@@ -77,8 +76,26 @@ class FlameSeg:
         }
 
     def get_triangles(self, part_name):
+        '''
+        get the triangles of local part 
+            Args:
+            -----
+            part_name: str or list of str,
+                the name of the part, or a list of part names. The part names include: 'eye_region', 'right_eye_region', 'left_eye_region',  
+                'forehead', 'lips', 'nose', 'left_eyeball', 'right_eyeball', 'right_ear', 'left_ear'  'neck', 'scalp',  'boundary',  'face'. 
+            
+            Returns:
+            --------
+            triangles: np.ndarray, shape Mx3
+        ''' 
         v_mask = np.zeros((self.N, 1))
-        v_mask[self.segms[part_name]] = 1
+        if isinstance(part_name, list):
+            for name in part_name:
+                v_mask[self.segms[name]] = 1
+        elif isinstance(part_name, str):
+            v_mask[self.segms[part_name]] = 1
+        else:
+            raise ValueError("part_name should be a string or a list of string")
         triangles = index_triangles_from_vertex_mask(v_mask, self.faces)
         return triangles
 

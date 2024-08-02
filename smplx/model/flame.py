@@ -301,16 +301,22 @@ class FLAME(SMPL):
 
         # If no shape and pose parameters are passed along, then use the
         # ones from the module
-        global_orient = (global_orient if global_orient is not None else
-                         self.global_orient)
+        global_orient = global_orient if global_orient is not None else self.global_orient
         jaw_pose = jaw_pose if jaw_pose is not None else self.jaw_pose
         neck_pose = neck_pose if neck_pose is not None else self.neck_pose
-
         leye_pose = leye_pose if leye_pose is not None else self.leye_pose
         reye_pose = reye_pose if reye_pose is not None else self.reye_pose
-
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
+
+        batch_size = max(len(betas), len(global_orient), len(jaw_pose), len(leye_pose), len(reye_pose))
+        global_orient = global_orient.expand(batch_size, -1)
+        jaw_pose = jaw_pose.expand(batch_size, -1)
+        leye_pose = leye_pose.expand(batch_size, -1)
+        reye_pose = reye_pose.expand(batch_size, -1)
+        neck_pose = neck_pose.expand(batch_size, -1)
+        betas = betas.expand(batch_size, -1)
+        expression = expression.expand(batch_size, -1)
         
         if betas.shape[1] < self.SHAPE_SPACE_DIM:
             zero_beta = torch.zeros(betas.shape[0], self.SHAPE_SPACE_DIM - betas.shape[1], dtype=betas.dtype, device=betas.device)

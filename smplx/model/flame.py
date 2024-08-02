@@ -16,6 +16,7 @@ from ..utils import (
 from ..vertex_joint_selector import VertexJointSelector
 from .smpl import SMPL 
 from ..subdivide import subdivide, subdivide_inorder
+from ..segment import FlameSeg 
 
 class FLAME(SMPL):
     NUM_JOINTS = 5
@@ -45,6 +46,7 @@ class FLAME(SMPL):
         dtype: torch.dtype = torch.float32,
         ext='pkl',
         upsample: bool = False, 
+        create_segms: bool = False,
         **kwargs
     ) -> None:
         ''' FLAME model constructor
@@ -108,8 +110,7 @@ class FLAME(SMPL):
             flame_path = model_path
             model_path = os.path.dirname(model_path)
 
-        assert osp.exists(flame_path), 'Path {} does not exist!'.format(
-            flame_path)
+        assert osp.exists(flame_path), 'Path {} does not exist!'.format(flame_path)
         if ext == 'npz':
             file_data = np.load(flame_path, allow_pickle=True)
         elif ext == 'pkl':
@@ -128,7 +129,7 @@ class FLAME(SMPL):
             ext=ext,
             num_betas=self.SHAPE_SPACE_DIM, 
             **kwargs)
-      
+
         self.use_face_contour = use_face_contour
 
         self.vertex_joint_selector.extra_joints_idxs = to_tensor(
@@ -203,6 +204,8 @@ class FLAME(SMPL):
             v_offsets_param = nn.Parameter(default_v_offsets, requires_grad=True)
             self.register_parameter('v_offsets', v_offsets_param)
 
+        if create_segms: 
+            self.segment = FlameSeg(model_path, N=self.N, faces=self.faces)
     @property
     def num_expression_coeffs(self):
         return self.EXPRESSION_SPACE_DIM

@@ -83,7 +83,24 @@ class FlameSeg:
         return torch.tensor(triangles, dtype=torch.long, device=self.device)
 
     def get_vertices(self, vertices, part_name):
-        return vertices[self.segms[part_name]]
+        '''
+        get the vertices of local part
+        
+            Parameters
+            ----------
+            vertices: torch.tensor, shape BxNx3 or Nx3
+            part_name: str, 
+                the name of the part
+
+            Returns
+            ------- 
+            vertices: torch.tensor, shape BxMx3 or Mx3
+        '''
+        assert len(vertices.shape) == 2 or len(vertices.shape) == 3
+        if len(vertices.shape) == 2:
+            return vertices[self.segms[part_name]]
+        else:
+            return vertices[:, self.segms[part_name]]
 
     # @property 
     # def vc(self):

@@ -208,9 +208,7 @@ def lbs(
     lbs_weights: Tensor,
     v_offsets: Tensor = None,
     pose2rot: bool = True,
-    custom_out: bool = False,
-    upsample_unique: Tensor = None, 
-    faces: Tensor = None,
+    custom_out: bool = False,  
 ):
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
 
@@ -241,8 +239,7 @@ def lbs(
             Bx(J + 1)x9
         dtype: torch.dtype, optional
 
-        custom_out: return A T if true
-        upsample_unique: Tensor, optional
+        custom_out: return A T if true 
          
         Returns
         -------
@@ -266,12 +263,7 @@ def lbs(
     # Add pose blend shapes 
     pose_offsets, rot_mats = pose_blend_shapes(pose, posedirs, pose2rot, True)
     v_posed = pose_offsets + v_shaped
-
-    # upsampling 
-    if upsample_unique is not None: 
-        assert faces is not None, "faces must be provided if upsampling"  
-        v_posed = subdivide_inorder(v_posed.squeeze(0), faces, upsample_unique).unsqueeze(0)
-
+ 
     if v_offsets is not None:
         v_posed += v_offsets
 

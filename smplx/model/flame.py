@@ -191,9 +191,9 @@ class FLAME(SMPL):
         self.register_buffer('neck_kin_chain', torch.tensor(find_joint_kin_chain(1, self.parents), dtype=torch.long))
         
         if upsample:
-            self.set_upsample()
-        else:
-            self.N = self.v_template.shape[0]
+            self.upsampling()
+        
+        self.N = self.v_template.shape[0]
         
         if create_v_offsets:
             if v_offsets is None:
@@ -206,6 +206,7 @@ class FLAME(SMPL):
 
         if create_segms: 
             self.segment = FlameSeg(model_path, N=self.N, faces=self.faces)
+    
     @property
     def num_expression_coeffs(self):
         return self.EXPRESSION_SPACE_DIM
@@ -220,16 +221,34 @@ class FLAME(SMPL):
             f'Use face contour: {self.use_face_contour}',
         ]
         return '\n'.join(msg)
+ 
+    def upsampling(self):
+        '''
+        subdivide the mesh to increase the number of vertices including v_template, lbs_weights, shapedir, posedir, etc
+        '''
+        N = self.v_template.shape[0] 
+        v_template, self.faces, unique = subdivide(self.v_template.cpu().numpy(), self.faces) 
+        self.v_template = torch.tensor(v_template).to(self.v_template)
+        self.unique = torch.tensor(unique, dtype=torch.long) 
+          
+        self.lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, unique)
 
-    def set_upsample(self): 
-        new_v, self.upsample_faces, unique = subdivide(self.v_template.detach().cpu().numpy(), self.faces) 
-        unique = torch.tensor(unique, dtype=torch.long) 
-        upsample_lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, unique)
-
-        self.register_buffer('unique', unique)
-        self.register_buffer('upsample_lbs_weights', upsample_lbs_weights) 
-        self.N = len(new_v)
-        self.upsample = True 
+        self.shapedirs = subdivide_inorder(
+            self.shapedirs.reshape(N, -1), 
+            self.faces_tensor, unique
+            ).reshape(-1, 3, 400)
+        
+        dp = self.posedirs.shape[0]
+        self.posedirs = subdivide_inorder(
+            self.posedirs.reshape(dp, N, 3).permute(1, 0, 2).reshape(N, dp*3), 
+            self.faces_tensor, unique
+        ).reshape(-1, dp, 3).permute(1, 0, 2).reshape(dp, -1)
+ 
+        self.J_regressor = subdivide_inorder(
+            self.J_regressor.transpose(0, 1),
+            self.faces_tensor, unique
+        ).transpose(0, 1)
+         
 
     def set_params(self, params):
         ''' Set the parameters of the model '''
@@ -256,8 +275,7 @@ class FLAME(SMPL):
         shapedirs: Optional[Tensor] = None, 
         posedirs: Optional[Tensor] = None,
         v_template: Optional[Tensor] = None,
-        lbs_weights: Optional[Tensor] = None,
-        J_regressor: Optional[Tensor] = None,
+        lbs_weights: Optional[Tensor] = None, 
         **kwargs
     ) -> FLAMEOutput:
         '''
@@ -354,27 +372,19 @@ class FLAME(SMPL):
         posedirs = posedirs if posedirs is not None else self.posedirs 
         if shapedirs is None:
             shapedirs = self.shapedirs 
- 
-        if lbs_weights is None: 
-            lbs_weights = self.lbs_weights if not self.upsample else self.upsample_lbs_weights 
-
-        if J_regressor is None:
-            J_regressor = self.J_regressor
- 
+   
         vertices, joints, vT, jT, v_cano, joints_cano = lbs(
             shape_components, 
             full_pose, 
             v_template,
             shapedirs, 
             posedirs,
-            J_regressor, 
+            self.J_regressor, 
             self.parents,
-            lbs_weights, 
+            self.lbs_weights, 
             pose2rot=pose2rot,
             custom_out=True,  
-            v_offsets=v_offsets, 
-            upsample_unique=self.unique if self.upsample else None, 
-            faces=self.faces_tensor if self.upsample else None
+            v_offsets=v_offsets   
         )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1).contiguous()

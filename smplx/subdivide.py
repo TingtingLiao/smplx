@@ -7,8 +7,7 @@ import pickle as pkl
  
 def subdivide_inorder(vertices, faces, unique):
     triangles = vertices[faces]
-    mid = torch.vstack([triangles[:, g, :].mean(1) for g in [[0, 1], [1, 2], [2, 0]]])
-
+    mid = torch.vstack([triangles[:, g, :].mean(1) for g in [[0, 1], [1, 2], [2, 0]]]) 
     mid = mid[unique]
     new_vertices = torch.vstack((vertices, mid))
     return new_vertices
@@ -41,7 +40,7 @@ def subdivide(vertices, faces, attributes=None, face_index=None):
       Vertices in space
     new_faces : (n, 3) int
       Remeshed faces
-    """
+    """ 
     if face_index is None:
         face_index = np.arange(len(faces))
     else:
@@ -88,7 +87,7 @@ def subdivide(vertices, faces, attributes=None, face_index=None):
         mid_att = mid_att[unique]
         new_attributes = np.vstack((attributes, mid_att))
         return new_vertices, new_faces, new_attributes, unique
-
+ 
     return new_vertices, new_faces, unique
 
 

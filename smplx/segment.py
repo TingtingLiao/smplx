@@ -39,17 +39,7 @@ def index_triangles_from_vertex_mask(vertex_mask, triangles):
     return triangles[tri_ids]  
 
 class FlameSeg:
-    def __init__(self, flame_dir, faces, N=5023): 
-        # ---------face 
-        # 'eye_region', 'right_eye_region', 'left_eye_region'
-        # 'forehead', 'lips', 'nose',
-        # 'left_eyeball', 'right_eyeball', 
-        # 'right_ear',    'left_ear' 
-        # -----------
-        # 'neck',  
-        # 'scalp', 
-        # 'boundary', 
-        # 'face',    
+    def __init__(self, flame_dir, faces, N=5023):  
         self.segms = pkl.load(open(f"{flame_dir}/FLAME_masks.pkl", "rb"), encoding='latin1') 
         self.N = N
         self._vc = None
@@ -81,8 +71,9 @@ class FlameSeg:
             Args:
             -----
             part_name: str or list of str,
-                the name of the part, or a list of part names. The part names include: 'eye_region', 'right_eye_region', 'left_eye_region',  
-                'forehead', 'lips', 'nose', 'left_eyeball', 'right_eyeball', 'right_ear', 'left_ear'  'neck', 'scalp',  'boundary',  'face'. 
+                the name of the part, or a list of part names. 
+                All parts name: 'eye_region', 'right_eye_region', 'left_eye_region', 'forehead', 'lips', 'nose', 
+                'left_eyeball', 'right_eyeball', 'right_ear', 'left_ear'  'neck', 'scalp',  'boundary',  'face'. 
             
             Returns:
             --------
@@ -103,7 +94,7 @@ class FlameSeg:
         '''
         get the vertices of local part
         
-            Parameters
+            Args
             ----------
             vertices: torch.tensor, shape BxNx3 or Nx3
             part_name: str, 

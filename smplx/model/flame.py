@@ -221,7 +221,31 @@ class FLAME(SMPL):
             f'Use face contour: {self.use_face_contour}',
         ]
         return '\n'.join(msg)
- 
+    
+    def shape_blendshape(self, betas, expression):
+        ''' 
+        shape blend shape offsets
+            Args:
+            -----
+                betas: torch.tensor, shape Bx100 
+                    shape parameters
+                expression: torch.tensor, shape Bx50
+                    expression parameters
+            Returns:
+            --------
+                offsets: torch.tensor, shape BxNx3 
+                the shape blend shape offsets
+        '''
+        batch = betas.shape[0]
+        shapes = torch.zeros(batch, self.SHAPE_SPACE_DIM+self.EXPRESSION_SPACE_DIM).float().cuda()
+        shapes[:, :betas.shape[1]] = betas
+        shapes[:, self.SHAPE_SPACE_DIM:self.SHAPE_SPACE_DIM+expression.shape[1]] = expression
+        offsets = blend_shapes(shapes, self.shapedirs) 
+        return offsets
+
+    def pose_blendshape(self, pose):
+        pass 
+
     def upsampling(self):
         '''
         subdivide the mesh to increase the number of vertices including v_template, lbs_weights, shapedir, posedir, etc
@@ -274,8 +298,7 @@ class FLAME(SMPL):
         v_offsets: Optional[Tensor] = None,
         shapedirs: Optional[Tensor] = None, 
         posedirs: Optional[Tensor] = None,
-        v_template: Optional[Tensor] = None,
-        lbs_weights: Optional[Tensor] = None, 
+        v_template: Optional[Tensor] = None, 
         **kwargs
     ) -> FLAMEOutput:
         '''

@@ -65,6 +65,19 @@ class FlameSeg:
 
         }
 
+    def get_vertex_ids(self, part_name):
+        '''
+        get the vertex ids of local part
+            Args:
+            -----
+            part_name: str
+
+            Returns:
+            --------
+            vertex_ids: np.ndarray, shape M 
+        '''
+        return self.segms[part_name]
+
     def get_triangles(self, part_name):
         '''
         get the triangles of local part 

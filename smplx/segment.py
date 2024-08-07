@@ -76,7 +76,13 @@ class FlameSeg:
             --------
             vertex_ids: np.ndarray, shape M 
         '''
-        return self.segms[part_name]
+        if part_name == 'face':
+            v_mask = np.ones((self.N, 1))
+            for key in ['right_ear', 'left_ear', 'neck', 'scalp', 'boundary']:
+                v_mask[self.segms[key]] = 0
+            return np.where(v_mask)[0]
+        else:
+            return self.segms[part_name]
 
     def get_triangles(self, part_name):
         '''

@@ -20,23 +20,7 @@ def segm_to_vertex_colors(part_segm, n_vertices, alpha=1.0):
 
     return vertex_colors
 
-
-def index_triangles_from_vertex_mask(vertex_mask, triangles):
-    """
-    return the related triangles of the vertices 
-    args:
-        vertex_mask: (N,) a boolean mask of vertices, True for selected vertices
-        triangles: (F, 3) np.ndarray, mesh faces
-    return: 
-        triangles: [M, 3] np.ndarray   
-    """   
-    tri_ids = []
-    for i, f in enumerate(triangles): 
-        for vid in f:
-            if vertex_mask[vid]: 
-                tri_ids.append(i)
-                break 
-    return triangles[tri_ids]  
+   
 
 class FlameSeg:
     def __init__(self, flame_dir, faces, N=5023):  
@@ -45,6 +29,14 @@ class FlameSeg:
         self._vc = None
         self.faces = faces 
     
+    @property
+    def partnames(self):
+        # 'eye_region', 'right_eye_region', 'left_eye_region' 
+        #  'left_eyeball', 'right_eyeball', 
+        # 'right_ear', 'left_ear', 'nose', 'forehead', 'lips', 
+        #  'scalp', 'boundary', 'face', 'neck',
+        return list(self.segms.keys())
+
     @property 
     def part2color(self):
         return {
@@ -83,31 +75,42 @@ class FlameSeg:
             return np.where(v_mask)[0]
         else:
             return self.segms[part_name]
-
-    def get_triangles(self, part_name):
+ 
+    def get_triangles(self, positive_parts, negative_parts=[], return_mask=False):
         '''
-        get the triangles of local part 
+        get the triangles of local part
             Args:
             -----
-            part_name: str or list of str,
-                the name of the part, or a list of part names. 
-                All parts name: 'eye_region', 'right_eye_region', 'left_eye_region', 'forehead', 'lips', 'nose', 
-                'left_eyeball', 'right_eyeball', 'right_ear', 'left_ear'  'neck', 'scalp',  'boundary',  'face'. 
+            positive_parts: str or list of str
+                the name of the part
+            negative_parts: str or list of str
+                the name of the part
+            return_mask: bool
+                whether return the mask of triangles
             
             Returns:
             --------
-            triangles: np.ndarray, shape Mx3
-        ''' 
-        v_mask = np.zeros((self.N, 1))
-        if isinstance(part_name, list):
-            for name in part_name:
-                v_mask[self.segms[name]] = 1
-        elif isinstance(part_name, str):
-            v_mask[self.segms[part_name]] = 1
-        else:
-            raise ValueError("part_name should be a string or a list of string")
-        triangles = index_triangles_from_vertex_mask(v_mask, self.faces)
-        return triangles
+            triangles: np.ndarray, shape Mx3 
+        '''
+        if isinstance(positive_parts, str):
+            positive_parts = [positive_parts]
+        
+        if isinstance(positive_parts, str):
+            positive_parts = [positive_parts]
+
+        v_mask = np.zeros((self.N)) 
+        for name in positive_parts:
+            v_mask[self.segms[name]] = 1
+        
+        for name in negative_parts:
+            v_mask[self.segms[name]] = 0
+         
+        tri_mask = v_mask[self.faces].any(axis=1)
+
+        if return_mask:
+            return self.faces[tri_mask], tri_mask
+
+        return self.faces[tri_mask]
 
     def get_vertices(self, vertices, part_name):
         '''

@@ -258,10 +258,7 @@ class FLAME(SMPL):
 
         if mode == 'all': 
             v_template, self.faces, unique = subdivide(self.v_template.cpu().numpy(), self.faces) 
-        else: 
-            # ids = list(set(SMPLXSeg.front_face_ids) - set(SMPLXSeg.forehead_ids))
-            # ids = ids + SMPLXSeg.ears_ids + SMPLXSeg.eyeball_ids + SMPLXSeg.hands_ids
-            # self.segment.get_vertex_ids(['face', 'ears', 'eyeball']) - set(self.segment.get_vertex_ids(['forehead']))
+        else:  
             sparse_tri, sparse_tri_mask = self.segment.get_triangles(
                 positive_parts=['neck', 'scalp', 'boundary', 'forehead'],
                 negative_parts=['left_ear', 'right_ear', 'left_eyeball', 'right_eyeball'], 

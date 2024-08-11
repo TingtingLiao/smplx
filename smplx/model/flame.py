@@ -246,12 +246,30 @@ class FLAME(SMPL):
     def pose_blendshape(self, pose):
         pass 
 
-    def upsampling(self):
+    def upsampling(self, mode='all'):
         '''
-        subdivide the mesh to increase the number of vertices including v_template, lbs_weights, shapedir, posedir, etc
+        subdivide the mesh to increase the number of vertices including v_template, lbs_weights, shapedir, posedir, and J_regressor 
+            Args:
+            -----
+                mode: str, 
+                    the mode of subdivide, 'all' or 'uniform'
         '''
         N = self.v_template.shape[0] 
-        v_template, self.faces, unique = subdivide(self.v_template.cpu().numpy(), self.faces) 
+
+        if mode == 'all': 
+            v_template, self.faces, unique = subdivide(self.v_template.cpu().numpy(), self.faces) 
+        else: 
+            # ids = list(set(SMPLXSeg.front_face_ids) - set(SMPLXSeg.forehead_ids))
+            # ids = ids + SMPLXSeg.ears_ids + SMPLXSeg.eyeball_ids + SMPLXSeg.hands_ids
+            # self.segment.get_vertex_ids(['face', 'ears', 'eyeball']) - set(self.segment.get_vertex_ids(['forehead']))
+            sparse_tri, sparse_tri_mask = self.segment.get_triangles(
+                positive_parts=['neck', 'scalp', 'boundary', 'forehead'],
+                negative_parts=['left_ear', 'right_ear', 'left_eyeball', 'right_eyeball'], 
+                return_mask=True
+            ) 
+            v_template, faces, unique = subdivide(self.v_template.cpu().numpy(), sparse_tri)
+            self.faces = np.concatenate([faces, self.faces[~sparse_tri_mask]])
+
         self.v_template = torch.tensor(v_template).to(self.v_template)
         self.unique = torch.tensor(unique, dtype=torch.long) 
           
@@ -267,7 +285,8 @@ class FLAME(SMPL):
             self.posedirs.reshape(dp, N, 3).permute(1, 0, 2).reshape(N, dp*3), 
             self.faces_tensor, unique
         ).reshape(-1, dp, 3).permute(1, 0, 2).reshape(dp, -1)
- 
+
+        # TODO: check if the J_regressor is correct
         self.J_regressor = subdivide_inorder(
             self.J_regressor.transpose(0, 1),
             self.faces_tensor, unique
@@ -390,7 +409,7 @@ class FLAME(SMPL):
         if scale > 1:
             betas = betas.expand(scale, -1)
         shape_components = torch.cat([betas, expression], dim=-1)
-
+        
         v_template = v_template if v_template is not None else self.v_template
         posedirs = posedirs if posedirs is not None else self.posedirs 
         if shapedirs is None:

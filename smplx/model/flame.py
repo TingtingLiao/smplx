@@ -256,20 +256,23 @@ class FLAME(SMPL):
         '''
         N = self.v_template.shape[0] 
 
+        joints_cano = self.forward().joints_cano[0]
+
         if mode == 'all': 
             v_template, self.faces, unique = subdivide(self.v_template.cpu().numpy(), self.faces) 
-        else:  
+            self.v_template = torch.tensor(v_template).to(self.v_template)
+             
+        else:   
             sparse_tri, sparse_tri_mask = self.segment.get_triangles(
                 positive_parts=['neck', 'scalp', 'boundary', 'forehead'],
                 negative_parts=['left_ear', 'right_ear', 'left_eyeball', 'right_eyeball'], 
                 return_mask=True
             ) 
             v_template, faces, unique = subdivide(self.v_template.cpu().numpy(), sparse_tri)
-            self.faces = np.concatenate([faces, self.faces[~sparse_tri_mask]])
-
-        self.v_template = torch.tensor(v_template).to(self.v_template)
+            self.faces = np.concatenate([faces, self.faces[~sparse_tri_mask]]) 
+        
         self.unique = torch.tensor(unique, dtype=torch.long) 
-          
+            
         self.lbs_weights = subdivide_inorder(self.lbs_weights, self.faces_tensor, unique)
 
         self.shapedirs = subdivide_inorder(
@@ -282,13 +285,26 @@ class FLAME(SMPL):
             self.posedirs.reshape(dp, N, 3).permute(1, 0, 2).reshape(N, dp*3), 
             self.faces_tensor, unique
         ).reshape(-1, dp, 3).permute(1, 0, 2).reshape(dp, -1)
+ 
 
         # TODO: check if the J_regressor is correct
-        self.J_regressor = subdivide_inorder(
-            self.J_regressor.transpose(0, 1),
-            self.faces_tensor, unique
-        ).transpose(0, 1)
+        # self.J_regressor = subdivide_inorder(
+        #     self.J_regressor.transpose(0, 1),
+        #     self.faces_tensor, unique
+        # ).transpose(0, 1)
+        self.update_J_regressor(joints_cano)
          
+    def update_J_regressor(self, joints_cano, betas=None, expression=None):
+        betas = betas if betas is not None else self.betas
+        expression = expression if expression is not None else self.expression
+        shape_offsets = self.shape_blendshape(betas, expression) 
+        v_shaped = self.v_template + shape_offsets[0]
+        J_regressor = np.linalg.lstsq(
+            v_shaped.detach().cpu().numpy().T, 
+            joints_cano.detach().cpu().numpy().T, 
+            rcond=None
+        )[0].T   
+        self.J_regressor = torch.tensor(J_regressor, dtype=self.dtype).to(joints_cano.device)
 
     def set_params(self, params):
         ''' Set the parameters of the model '''
@@ -405,6 +421,7 @@ class FLAME(SMPL):
         scale = int(batch_size / betas.shape[0])
         if scale > 1:
             betas = betas.expand(scale, -1)
+         
         shape_components = torch.cat([betas, expression], dim=-1)
         
         v_template = v_template if v_template is not None else self.v_template

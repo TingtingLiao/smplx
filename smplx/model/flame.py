@@ -286,7 +286,6 @@ class FLAME(SMPL):
             self.faces_tensor, unique
         ).reshape(-1, dp, 3).permute(1, 0, 2).reshape(dp, -1)
  
-
         # TODO: check if the J_regressor is correct
         # self.J_regressor = subdivide_inorder(
         #     self.J_regressor.transpose(0, 1),

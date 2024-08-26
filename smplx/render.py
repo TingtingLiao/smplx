@@ -21,12 +21,61 @@ def scale_img_nhwc(x, size, mag='bilinear', min='bilinear'):
 
 
 class Renderer(torch.nn.Module):
-    def __init__(self, gui=False):
+    def __init__(self, gui=False, shading=False, hdr_path=None):
         super().__init__()    
         if not gui or os.name == 'nt': 
             self.glctx = dr.RasterizeCudaContext()
         else:
             self.glctx = dr.RasterizeGLContext()
+
+        if shading and hdr_path is not None:
+            import envlight
+            if hdr_path is None:
+                hdr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets/lights/mud_road_puresky_1k.hdr') 
+            self.light = envlight.EnvLight(hdr_path, scale=2, device='cuda')
+            self.FG_LUT = torch.from_numpy(np.fromfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets/lights/bsdf_256_256.bin"), dtype=np.float32).reshape(1, 256, 256, 2)).cuda()
+            self.metallic_factor = 1
+            self.roughness_factor = 1
+ 
+
+    def render_bg(self, envmap_path):
+        '''render with shading'''
+     
+        from PIL import Image 
+        envmap = Image.open(envmap_path)
+        h,w = self.res
+        pos_int = torch.arange(w*h, dtype = torch.int32, device='cuda')
+        pos = 0.5 - torch.stack((pos_int % w, pos_int // w), dim=1) / torch.tensor((w,h), device='cuda')
+        a = np.deg2rad(self.fov_x)/2
+        r = w/h
+        f = torch.tensor((2*np.tan(a),  2*np.tan(a)/r), device='cuda', dtype=torch.float32)
+        rays = torch.cat((pos*f, torch.ones((w*h,1), device='cuda'), torch.zeros((w*h,1), device='cuda')), dim=1)
+        rays_norm = (rays.transpose(0,1) / torch.norm(rays, dim=1)).transpose(0,1)
+        rays_view = torch.matmul(rays_norm, self.view_mats.inverse().transpose(1,2)).reshape((self.view_mats.shape[0],h,w,-1))
+        theta = torch.acos(rays_view[..., 1])
+        phi = torch.atan2(rays_view[..., 0], rays_view[..., 2])
+        envmap_uvs = torch.stack([0.75-phi/(2*np.pi), theta / np.pi], dim=-1)
+        self.bgs = dr.texture(envmap[None, ...], envmap_uvs, filter_mode='linear').flip(1)
+        self.bgs[..., -1] = 0 # Set alpha to 0
+
+    def shading(self, mesh, rast, rast_db, mode='rgb'): 
+        if mesh.albedo is not None:
+            texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all') 
+            albedo = dr.texture(
+                mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear-mipmap-linear')  # [B, H, W, 3]
+            color = torch.where(rast[..., 3:] > 0, albedo, torch.tensor(0).to(albedo.device))  # remove background
+        elif mesh.vc is not None:
+            color, _ = dr.interpolate(mesh.vc[None, ..., :3].contiguous().float(), rast, mesh.f)
+        else:
+            return None 
+        
+        if mode == "lambertian":
+            lambertian = ambient_ratio + (1 - ambient_ratio) * (normal @ light_d.view(-1, 1)).float().clamp(min=0)
+            color = color * lambertian.repeat(1, 1, 1, 3)
+        elif mode == "pbr":
+            pass 
+
+
 
     def forward(self, mesh, mvp,
                 h=512,
@@ -35,7 +84,8 @@ class Renderer(torch.nn.Module):
                 ambient_ratio=1.,
                 mode='rgb',
                 spp=1,
-                bg_color=None):
+                bg_color=None, 
+                shading=False):
         """
         Args:
             spp: int
@@ -79,7 +129,7 @@ class Renderer(torch.nn.Module):
             color, _ = dr.interpolate(mesh.vc[None, ..., :3].contiguous().float(), rast, mesh.f)
         else:
             color = None 
- 
+        
         if mode == "lambertian" and color is not None:
             lambertian = ambient_ratio + (1 - ambient_ratio) * (normal @ light_d.view(-1, 1)).float().clamp(min=0)
             color = color * lambertian.repeat(1, 1, 1, 3)

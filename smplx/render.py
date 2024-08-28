@@ -4,21 +4,9 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import nvdiffrast.torch as dr
- 
+from kiui.op import scale_img_nhwc
 
-
-def scale_img_nhwc(x, size, mag='bilinear', min='bilinear'):
-    assert (x.shape[1] >= size[0] and x.shape[2] >= size[1]) or (x.shape[1] < size[0] and x.shape[2] < size[
-        1]), "Trying to magnify image in one dimension and minify in the other"
-    y = x.permute(0, 3, 1, 2)  # NHWC -> NCHW
-    if x.shape[1] > size[0] and x.shape[2] > size[1]:  # Minification, previous size was bigger
-        y = torch.nn.functional.interpolate(y, size, mode=min)
-    else:  # Magnification
-        if mag == 'bilinear' or mag == 'bicubic':
-            y = torch.nn.functional.interpolate(y, size, mode=mag, align_corners=True)
-        else:
-            y = torch.nn.functional.interpolate(y, size, mode=mag)
-    return y.permute(0, 2, 3, 1).contiguous()  # NCHW -> NHWC
+from .lbs import batch_rodrigues 
 
 
 class Renderer(torch.nn.Module):
@@ -104,15 +92,35 @@ class Renderer(torch.nn.Module):
 
             buffer = color[0].detach().cpu().numpy()
 
-        
         return color 
 
+    def get_orthogonal_cameras(self, n=4, flipY=True):
+        """
+        Args:
+            n: int number of cameras
+            flipY: bool whether to flip Y axis
+        Returns:
+            mvp: torch.Tensor [n, 4, 4], batch of orthogonal cameras 
+        """
+        mvp = torch.eye(4)[None].expand(n, -1, -1).clone()  
+        
+        angles = np.linspace(0, np.pi*2, n, endpoint=False)
+        R = batch_rodrigues(torch.tensor([[0, angle, 0] for angle in angles]).reshape(-1, 3)).float()  
+        
+        if flipY:
+            flip_rot = batch_rodrigues(torch.tensor([np.pi, 0, 0]).reshape(1, 3)).reshape(3, 3).float()  
+            R = torch.matmul(R, flip_rot) 
+
+        mvp[:, :3, :3] = R 
+        
+        return mvp
+    
     def forward(self, mesh, mvp,
                 h=512,
                 w=512,
                 light_d=None,
                 ambient_ratio=1.,
-                mode='rgb',
+                shading_mode='albedo',
                 spp=1,
                 bg_color=None, 
                 shading=False):
@@ -125,11 +133,13 @@ class Renderer(torch.nn.Module):
             light_d:
             spp: int
             ambient_ratio: float
-            mode: str rendering type rgb, normal, lambertian
+            shading_mode: str rendering type albedo, lambertian or pbr
         Returns:
             color: [batch, h, w, 3]
             alpha: [batch, h, w, 1] 
         """
+        assert shading_mode in ['albedo', 'lambertian', 'pbr'], "shading_mode should be albedo, lambertian or pbr"
+        
         B = mvp.shape[0] 
         v_homo = F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1)
         v_clip = torch.bmm(v_homo, torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
@@ -145,9 +155,13 @@ class Renderer(torch.nn.Module):
         normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
         normal = (normal + 1) / 2.
         
+        if mesh.vt is not None and mesh.ft is not None:
+            texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all') 
+        else:
+            texc = None 
+        
         ### albedo   
         if mesh.albedo is not None:
-            texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all') 
             albedo = dr.texture(mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear')  # [B, H, W, 3] 
         elif mesh.vc is not None:
             color, _ = dr.interpolate(mesh.vc[None, ..., :3].contiguous().float(), rast, mesh.f)
@@ -157,7 +171,7 @@ class Renderer(torch.nn.Module):
         ### shading  
         if color is not None:
             color = torch.where(rast[..., 3:] > 0, color, torch.tensor(0).to(color.device))  # remove background
-            color = self.shading(color, normal, mode='albedo')
+            color = self.shading(color, normal, mode=shading_mode)
             
         ### antialias
         normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]

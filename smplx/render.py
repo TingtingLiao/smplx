@@ -117,13 +117,13 @@ class Renderer(torch.nn.Module):
                 bg_color=None, 
                 shading=False):
         """
-        Args:
-            spp: int
+        Args: 
             mesh: Mesh object
             mvp: [batch, 4, 4]
             h: int
             w: int
             light_d:
+            spp: int
             ambient_ratio: float
             mode: str rendering type rgb, normal, lambertian
         Returns:
@@ -131,52 +131,48 @@ class Renderer(torch.nn.Module):
             alpha: [batch, h, w, 1] 
         """
         B = mvp.shape[0] 
-        v_clip = torch.bmm(F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1),
-                           torch.transpose(mvp, 1, 2)
-                           ).float()  # [B, N, 4]
-         
+        v_homo = F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1)
+        v_clip = torch.bmm(v_homo, torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
 
         res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
         rast, rast_db = dr.rasterize(self.glctx, v_clip, mesh.f, res)
+        alpha = (rast[..., 3:] > 0).float()
 
-        ############################### 
-        # Interpolate attributes
-        ############################### 
-        
-        # Interpolate world space position
-        alpha, _ = dr.interpolate(torch.ones_like(v_clip[..., :1]), rast, mesh.f)  # [B, H, W, 1] 
+        ### normal  
+        if mesh.vn is None:
+            mesh.auto_normal()
+            
         normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
         normal = (normal + 1) / 2.
         
+        ### albedo   
         if mesh.albedo is not None:
             texc, texc_db = dr.interpolate(mesh.vt[None, ...], rast, mesh.ft, rast_db=rast_db, diff_attrs='all') 
-            albedo = dr.texture(
-                mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear')  # [B, H, W, 3] 
+            albedo = dr.texture(mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear')  # [B, H, W, 3] 
         elif mesh.vc is not None:
             color, _ = dr.interpolate(mesh.vc[None, ..., :3].contiguous().float(), rast, mesh.f)
         else:
             color = None
-         
-        ############################### 
-        # shading 
-        ###############################
+
+        ### shading  
         if color is not None:
             color = torch.where(rast[..., 3:] > 0, color, torch.tensor(0).to(color.device))  # remove background
             color = self.shading(color, normal, mode='albedo')
             
-        # antialias
+        ### antialias
         normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
         alpha = dr.antialias(alpha, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
         if color is not None:
             color = dr.antialias(color, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
-          
-        # inverse super-sampling
+
+        ### inverse super-sampling
         if spp > 1:
             if color is not None:
                 color = scale_img_nhwc(color, (h, w))
             alpha = scale_img_nhwc(alpha, (h, w))
             normal = scale_img_nhwc(normal, (h, w))
 
+        ### background
         if bg_color is not None:
             if color is not None:
                 color = color * alpha + bg_color * (1 - alpha)
@@ -185,6 +181,6 @@ class Renderer(torch.nn.Module):
         return {
             'image': color,
             'normal': normal,
-            'alpha': alpha
+            'alpha': alpha, 
+            'uvs': texc
         }
-  

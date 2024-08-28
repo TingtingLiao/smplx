@@ -162,7 +162,7 @@ class Renderer(torch.nn.Module):
         ###############################
         if color is not None:
             color = torch.where(rast[..., 3:] > 0, color, torch.tensor(0).to(color.device))  # remove background
-            color = self.shading(color, normal, mode='pbr')
+            color = self.shading(color, normal, mode='albedo')
             
         # antialias
         normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]

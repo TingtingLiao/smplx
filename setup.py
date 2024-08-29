@@ -10,6 +10,6 @@ setup(
         'numpy',
         'tqdm', 
         'matplotlib', 
-        # 'pickle', 
+        'kiui', 
     ],
 )

@@ -3,7 +3,9 @@ import random
 import torch
 import torch.nn.functional as F
 import numpy as np
+from time import time 
 import nvdiffrast.torch as dr
+from rich.progress import track
 from kiui.op import scale_img_nhwc
 
 from .lbs import batch_rodrigues 
@@ -94,17 +96,20 @@ class Renderer(torch.nn.Module):
 
         return color 
 
-    def get_orthogonal_cameras(self, n=4, flipY=True):
+    def get_orthogonal_cameras(self, n=4, yaw_range=(0, 360), flipY=True):
         """
+        generate orthogonal cameras mvp matrix along yaw axis
         Args:
             n: int number of cameras
+            yaw_range: tuple (min_yaw, max_yaw) in degrees
             flipY: bool whether to flip Y axis
         Returns:
             mvp: torch.Tensor [n, 4, 4], batch of orthogonal cameras 
         """
         mvp = torch.eye(4)[None].expand(n, -1, -1).clone()  
         
-        angles = np.linspace(0, np.pi*2, n, endpoint=False)
+        min_yaw, max_yaw = np.radians(yaw_range)
+        angles = np.linspace(min_yaw, max_yaw, n, endpoint=False)
         R = batch_rodrigues(torch.tensor([[0, angle, 0] for angle in angles]).reshape(-1, 3)).float()  
         
         if flipY:
@@ -115,9 +120,22 @@ class Renderer(torch.nn.Module):
         
         return mvp
     
-    def forward(self, mesh, mvp,
-                h=512,
-                w=512,
+    def render_360views(self, mesh, num_views, res=512, bg='white', resize=True, loop=1):
+        device = mesh.v.device  
+        bg_color = torch.ones(3).to(device) if bg == 'white' else torch.zeros(3).to(device) 
+
+        mesh.auto_normal() 
+        if resize:
+            mesh.auto_size() 
+
+        # camera 
+        yaw_range = (0, 360*loop)
+        mvps = self.get_orthogonal_cameras(num_views, yaw_range).to(device)
+        
+        pkg = self.forward(mesh, mvps, spp=2, bg_color=bg_color, h=res, w=res)
+        return pkg
+    
+    def forward(self, mesh, mvp, h=512, w=512,
                 light_d=None,
                 ambient_ratio=1.,
                 shading_mode='albedo',
@@ -162,7 +180,7 @@ class Renderer(torch.nn.Module):
         
         ### albedo   
         if mesh.albedo is not None:
-            albedo = dr.texture(mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear')  # [B, H, W, 3] 
+            color = dr.texture(mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear')  # [B, H, W, 3] 
         elif mesh.vc is not None:
             color, _ = dr.interpolate(mesh.vc[None, ..., :3].contiguous().float(), rast, mesh.f)
         else:

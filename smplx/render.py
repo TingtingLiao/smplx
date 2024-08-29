@@ -6,7 +6,7 @@ import numpy as np
 from time import time 
 import nvdiffrast.torch as dr
 from rich.progress import track
-from kiui.op import scale_img_nhwc
+from kiui.op import scale_img_nhwc, safe_normalize
 
 from .lbs import batch_rodrigues 
 
@@ -96,27 +96,31 @@ class Renderer(torch.nn.Module):
 
         return color 
 
-    def get_orthogonal_cameras(self, n=4, yaw_range=(0, 360), flipY=True):
+    def get_orthogonal_cameras(self, n=4, yaw_range=(0, 360), return_all=False):
         """
         generate orthogonal cameras mvp matrix along yaw axis
         Args:
             n: int number of cameras
-            yaw_range: tuple (min_yaw, max_yaw) in degrees
-            flipY: bool whether to flip Y axis
+            yaw_range: tuple (min_yaw, max_yaw) in degrees 
         Returns:
             mvp: torch.Tensor [n, 4, 4], batch of orthogonal cameras 
         """
-        mvp = torch.eye(4)[None].expand(n, -1, -1).clone()  
-        
+        # extrinsic: rotate object along yaw axis
+        extrinsic = torch.eye(4)[None].expand(n, -1, -1).clone()   
         min_yaw, max_yaw = np.radians(yaw_range)
         angles = np.linspace(min_yaw, max_yaw, n, endpoint=False)
-        R = batch_rodrigues(torch.tensor([[0, angle, 0] for angle in angles]).reshape(-1, 3)).float()  
-        
-        if flipY:
-            flip_rot = batch_rodrigues(torch.tensor([np.pi, 0, 0]).reshape(1, 3)).reshape(3, 3).float()  
-            R = torch.matmul(R, flip_rot) 
+        R = batch_rodrigues(torch.tensor([[0, angle, 0] for angle in angles]).reshape(-1, 3)).float() 
+        extrinsic[:, :3, :3] = R 
 
-        mvp[:, :3, :3] = R 
+        # intrinsic: orthogonal projection
+        intrinsic = torch.eye(4)[None].expand(n, -1, -1).clone()   
+        R = batch_rodrigues(torch.tensor([np.pi, 0, 0]).reshape(1, 3)).reshape(3, 3).float()   
+        intrinsic[:, :3, :3] = R
+        
+        mvp = torch.matmul(extrinsic, intrinsic) 
+        
+        if return_all:
+            return mvp, extrinsic, intrinsic
         
         return mvp
     
@@ -171,6 +175,7 @@ class Renderer(torch.nn.Module):
             mesh.auto_normal()
             
         normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
+        normal = safe_normalize(normal)
         normal = (normal + 1) / 2.
         
         if mesh.vt is not None and mesh.ft is not None:

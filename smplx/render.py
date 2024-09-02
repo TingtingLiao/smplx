@@ -162,6 +162,9 @@ class Renderer(torch.nn.Module):
         """
         assert shading_mode in ['albedo', 'lambertian', 'pbr'], "shading_mode should be albedo, lambertian or pbr"
         
+        if not h % 8 == 0 and w % 8 == 0:
+            raise ValueError("h and w should be multiples of 8")
+        
         B = mvp.shape[0] 
         v_homo = F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1)
         v_clip = torch.bmm(v_homo, torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
@@ -169,6 +172,8 @@ class Renderer(torch.nn.Module):
         res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
         rast, rast_db = dr.rasterize(self.glctx, v_clip, mesh.f, res)
         alpha = (rast[..., 3:] > 0).float()
+        
+        # alpha, _ = dr.interpolate(torch.ones_like(v_clip[..., :1]), rast, mesh.f)  # [B, H, W, 1] 
 
         ### normal  
         if mesh.vn is None:

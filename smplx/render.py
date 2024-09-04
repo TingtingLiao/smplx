@@ -180,7 +180,6 @@ class Renderer(torch.nn.Module):
             mesh.auto_normal()
             
         normal, _ = dr.interpolate(mesh.vn[None, ...].float(), rast, mesh.f)
-        normal = safe_normalize(normal)
         normal = (normal + 1) / 2.
         
         if mesh.vt is not None and mesh.ft is not None:

@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 from ..lbs import (
-    lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes)
+    lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes, pose_blend_shapes)
 from ..vertex_ids import vertex_ids as VERTEX_IDS
 from ..utils import (
     Struct, to_np, to_tensor, Tensor, Array,
@@ -206,7 +206,7 @@ class FLAME(SMPL):
 
         if create_segms: 
             self.segment = FlameSeg(model_path, N=self.N, faces=self.faces)
-    
+        
     @property
     def num_expression_coeffs(self):
         return self.EXPRESSION_SPACE_DIM
@@ -222,7 +222,7 @@ class FLAME(SMPL):
         ]
         return '\n'.join(msg)
     
-    def shape_blendshape(self, betas, expression):
+    def shape_blendshape(self, betas=None, expression=None):
         ''' 
         shape blend shape offsets
             Args:
@@ -238,13 +238,35 @@ class FLAME(SMPL):
         '''
         batch = betas.shape[0]
         shapes = torch.zeros(batch, self.SHAPE_SPACE_DIM+self.EXPRESSION_SPACE_DIM).float().cuda()
-        shapes[:, :betas.shape[1]] = betas
-        shapes[:, self.SHAPE_SPACE_DIM:self.SHAPE_SPACE_DIM+expression.shape[1]] = expression
+        
+        if betas is not None: 
+            shapes[:, :betas.shape[1]] = betas
+        if expression is not None:
+            shapes[:, self.SHAPE_SPACE_DIM:self.SHAPE_SPACE_DIM+expression.shape[1]] = expression
+        
         offsets = blend_shapes(shapes, self.shapedirs) 
         return offsets
 
-    def pose_blendshape(self, pose):
-        pass 
+    def pose_blendshape(self, global_orient=None, neck_pose=None, jaw_pose=None, leye_pose=None, reye_pose=None):
+        self.device, self.dtype = self.shapedirs.device, self.shapedirs.dtype
+        if global_orient is None:
+            global_orient = torch.zeros(1, 3, dtype=self.dtype).to(self.device)
+        if neck_pose is None:
+            neck_pose = torch.zeros(1, 3, dtype=self.dtype).to(self.device)
+        if jaw_pose is None:
+            jaw_pose = torch.zeros(1, 3, dtype=self.dtype).to(self.device)
+        if leye_pose is None:
+            leye_pose = torch.zeros(1, 3, dtype=self.dtype).to(self.device)
+        if reye_pose is None:
+            reye_pose = torch.zeros(1, 3, dtype=self.dtype).to(self.device)
+        
+        # batch = max(len(global_orient), len(neck_pose), len(jaw_pose), len(leye_pose), len(reye_pose))
+        # if not batch == len(global_orient):
+            
+        full_pose = torch.stack([global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1) 
+        offsets = pose_blend_shapes(full_pose, self.posedirs, True)
+        
+        return offsets  
 
     def upsampling(self, mode='all'):
         '''

@@ -235,14 +235,18 @@ class FLAME(SMPL):
             --------
                 offsets: torch.tensor, shape BxNx3 
                 the shape blend shape offsets
-        '''
-        batch = betas.shape[0]
-        shapes = torch.zeros(batch, self.SHAPE_SPACE_DIM+self.EXPRESSION_SPACE_DIM).float().cuda()
+        ''' 
         
-        if betas is not None: 
-            shapes[:, :betas.shape[1]] = betas
-        if expression is not None:
-            shapes[:, self.SHAPE_SPACE_DIM:self.SHAPE_SPACE_DIM+expression.shape[1]] = expression
+        if betas is not None and expression is not None:
+            shapes = torch.cat([betas, expression], dim=1) 
+        elif betas is not None: 
+            batch, dim = betas.shape
+            shapes = torch.zeros(batch, self.SHAPE_SPACE_DIM+self.EXPRESSION_SPACE_DIM).float().cuda()
+            shapes[:, :dim] = betas
+        elif expression is not None:
+            batch, dim = expression.shape
+            shapes = torch.zeros(batch, self.SHAPE_SPACE_DIM+self.EXPRESSION_SPACE_DIM).float().cuda()
+            shapes[:, self.SHAPE_SPACE_DIM:self.SHAPE_SPACE_DIM+dim] = expression
         
         offsets = blend_shapes(shapes, self.shapedirs) 
         return offsets

@@ -30,7 +30,6 @@ class Renderer(torch.nn.Module):
             self.FG_LUT = torch.from_numpy(np.fromfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets/lights/bsdf_256_256.bin"), dtype=np.float32).reshape(1, 256, 256, 2)).cuda()
             self.metallic_factor = 1
             self.roughness_factor = 1
- 
 
     def render_bg(self, envmap_path):
         '''render with shading'''
@@ -66,7 +65,7 @@ class Renderer(torch.nn.Module):
             lambertian = self.ambient_ratio + (1 - self.ambient_ratio)  * (normal @ light_d).float().clamp(min=0)
             albedo = albedo * lambertian.unsqueeze(-1) 
             return albedo
-              
+
         elif mode == "pbr": 
             xyzs, _ = dr.interpolate(self.mesh.v.unsqueeze(0), rast, self.mesh.f) # [1, H, W, 3]
             viewdir = safe_normalize(xyzs - pose[:3, 3])
@@ -124,11 +123,15 @@ class Renderer(torch.nn.Module):
         
         return mvp
     
-    def render_360views(self, mesh, num_views, res=512, bg='white', resize=True, loop=1):
+    def render_360views(self, input_mesh, num_views, res=512, bg='white', resize=True, loop=1, shading_mode='albedo'):
+        mesh = input_mesh.clone() 
         device = mesh.v.device  
+        
         bg_color = torch.ones(3).to(device) if bg == 'white' else torch.zeros(3).to(device) 
-
-        mesh.auto_normal() 
+        
+        if mesh.vn is None:
+            mesh.auto_normal() 
+        
         if resize:
             mesh.auto_size() 
 
@@ -136,7 +139,7 @@ class Renderer(torch.nn.Module):
         yaw_range = (0, 360*loop)
         mvps = self.get_orthogonal_cameras(num_views, yaw_range).to(device)
         
-        pkg = self.forward(mesh, mvps, spp=2, bg_color=bg_color, h=res, w=res)
+        pkg = self.forward(mesh, mvps, spp=2, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode)
         return pkg
     
     def forward(self, mesh, mvp, h=512, w=512,
@@ -144,8 +147,7 @@ class Renderer(torch.nn.Module):
                 ambient_ratio=1.,
                 shading_mode='albedo',
                 spp=1,
-                bg_color=None, 
-                shading=False):
+                bg_color=None):
         """
         Args: 
             mesh: Mesh object

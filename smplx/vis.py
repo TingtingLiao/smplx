@@ -15,8 +15,16 @@ def lbs_weights_to_colors(lbs_weights, cmap='Pastel1'):
     ''' 
     J = lbs_weights.shape[1] 
     
-    mapper = getattr(plt.cm, cmap)
-    J_colors = mapper(np.linspace(0, 1, J))
-    J_ids = lbs_weights.argmax(dim=1)  
-    colors = J_colors[J_ids]  
+    mapper = getattr(plt.cm, cmap) 
+    J_colors = mapper(np.array(range(J)))[:, :3]  # (J, 3)
+    colors = lbs_weights @ J_colors # (N, 3)
     return colors
+
+
+
+if __name__ == '__main__':
+    lbs_weights = np.random.rand(100, 5)
+    colors = lbs_weights_to_colors(lbs_weights)
+    print(colors.shape) # (100, 3)
+    
+    

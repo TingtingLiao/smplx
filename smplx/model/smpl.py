@@ -23,8 +23,8 @@ class SMPL(nn.Module):
     SHAPE_SPACE_DIM = 300
 
     def __init__(
-        self, model_path: str,
-	kid_template_path: str = '',
+        self, model_path: str = '',
+	    kid_template_path: str = '',
         data_struct: Optional[Struct] = None,
         create_betas: bool = True,
         betas: Optional[Tensor] = None,

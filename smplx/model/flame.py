@@ -120,8 +120,7 @@ class FLAME(SMPL):
             raise ValueError('Unknown extension: {}'.format(ext))
         data_struct = Struct(**file_data)
 
-        super(FLAME, self).__init__(
-            model_path=model_path,
+        super(FLAME, self).__init__( 
             data_struct=data_struct,
             dtype=dtype,
             batch_size=batch_size,
@@ -132,16 +131,14 @@ class FLAME(SMPL):
 
         self.use_face_contour = use_face_contour
 
-        self.vertex_joint_selector.extra_joints_idxs = to_tensor(
-            [], dtype=torch.long)
- 
+        self.vertex_joint_selector.extra_joints_idxs = to_tensor([], dtype=torch.long)
+
         if create_neck_pose:
             if neck_pose is None:
                 default_neck_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_neck_pose = torch.tensor(neck_pose, dtype=dtype)
-            neck_pose_param = nn.Parameter(
-                default_neck_pose, requires_grad=True)
+            neck_pose_param = nn.Parameter(default_neck_pose, requires_grad=True)
             self.register_parameter('neck_pose', neck_pose_param)
 
         if create_jaw_pose:
@@ -149,8 +146,7 @@ class FLAME(SMPL):
                 default_jaw_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_jaw_pose = torch.tensor(jaw_pose, dtype=dtype)
-            jaw_pose_param = nn.Parameter(default_jaw_pose,
-                                          requires_grad=True)
+            jaw_pose_param = nn.Parameter(default_jaw_pose, requires_grad=True)
             self.register_parameter('jaw_pose', jaw_pose_param)
 
         if create_leye_pose:
@@ -158,8 +154,7 @@ class FLAME(SMPL):
                 default_leye_pose = torch.zeros([batch_size, 3], dtype=dtype)
             else:
                 default_leye_pose = torch.tensor(leye_pose, dtype=dtype)
-            leye_pose_param = nn.Parameter(default_leye_pose,
-                                           requires_grad=True)
+            leye_pose_param = nn.Parameter(default_leye_pose, requires_grad=True)
             self.register_parameter('leye_pose', leye_pose_param)
 
         if create_reye_pose:
@@ -169,8 +164,7 @@ class FLAME(SMPL):
                 default_reye_pose = torch.tensor(reye_pose, dtype=dtype)
             reye_pose_param = nn.Parameter(default_reye_pose, requires_grad=True)
             self.register_parameter('reye_pose', reye_pose_param)
-
-        
+ 
         self.register_buffer("shapedirs", to_tensor(to_np(data_struct.shapedirs), dtype=self.dtype))
  
         if create_expression:
@@ -182,12 +176,19 @@ class FLAME(SMPL):
             expression_param = nn.Parameter(default_expression, requires_grad=True)
             self.register_parameter('expression', expression_param)
  
-        landmark_bcoord_filename = osp.join(model_path, 'landmark_embedding.npy')  
+        landmark_bcoord_filename = osp.join(model_path, 'landmark_embedding_with_eyes.npy')  
         landmarks_data = np.load(landmark_bcoord_filename, allow_pickle=True, encoding='latin1')[()] 
         self.register_buffer('lmk_faces_idx', torch.tensor(landmarks_data['static_lmk_faces_idx'], dtype=torch.long)) 
         self.register_buffer('lmk_bary_coords', torch.tensor(landmarks_data['static_lmk_bary_coords'], dtype=dtype))    
         self.register_buffer('dynamic_lmk_faces_idx', landmarks_data['dynamic_lmk_faces_idx'].long())
         self.register_buffer('dynamic_lmk_bary_coords', landmarks_data['dynamic_lmk_bary_coords'].to(dtype)) 
+        self.register_buffer(
+            "full_lmk_faces_idx", torch.tensor(landmarks_data["full_lmk_faces_idx"], dtype=torch.long),
+        )
+        self.register_buffer(
+            "full_lmk_bary_coords", torch.tensor(landmarks_data["full_lmk_bary_coords"], dtype=self.dtype),
+        )
+        
         self.register_buffer('neck_kin_chain', torch.tensor(find_joint_kin_chain(1, self.parents), dtype=torch.long))
         
         if upsample:
@@ -428,32 +429,29 @@ class FLAME(SMPL):
             zero_expr = torch.zeros(expression.shape[0], self.EXPRESSION_SPACE_DIM - expression.shape[1], dtype=expression.dtype, device=expression.device)
             expression = torch.cat([expression, zero_expr], dim=1)
 
-        if v_offsets is None:
-            if hasattr(self, 'v_offsets'):
+        if v_offsets is None and hasattr(self, 'v_offsets'):
                 v_offsets = self.v_offsets 
 
         apply_trans = transl is not None or hasattr(self, 'transl')
-        if transl is None:
-            if hasattr(self, 'transl'):
-                transl = self.transl
+        if transl is None and hasattr(self, 'transl'):
+            transl = self.transl
         
         full_pose = torch.cat(
             [global_orient, neck_pose, jaw_pose, leye_pose, reye_pose], dim=1).reshape(-1, 5, 3)
         
-        batch_size = max(betas.shape[0], global_orient.shape[0],
-                         jaw_pose.shape[0])
+        batch_size = max(betas.shape[0], global_orient.shape[0], jaw_pose.shape[0])
         # Concatenate the shape and expression coefficients
         scale = int(batch_size / betas.shape[0])
         if scale > 1:
             betas = betas.expand(scale, -1)
-         
+
         shape_components = torch.cat([betas, expression], dim=-1)
         
         v_template = v_template if v_template is not None else self.v_template
         posedirs = posedirs if posedirs is not None else self.posedirs 
         if shapedirs is None:
             shapedirs = self.shapedirs 
-   
+
         vertices, joints, vT, jT, v_cano, joints_cano = lbs(
             shape_components, 
             full_pose, 
@@ -468,26 +466,31 @@ class FLAME(SMPL):
             v_offsets=v_offsets   
         )
 
-        lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1).contiguous()
-        lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(batch_size, 1, 1)
+        ##### landmarks 
+        if hasattr(self, 'full_lmk_faces_idx') and hasattr(self, 'full_lmk_bary_coords'): 
+            lmk_faces_idx = self.full_lmk_faces_idx.repeat(batch_size, 1)
+            lmk_bary_coords = self.full_lmk_bary_coords.repeat(batch_size, 1, 1)
+        else:
+            lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1).contiguous()
+            lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(batch_size, 1, 1)
 
-        if self.use_face_contour:
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = find_dynamic_lmk_idx_and_bcoords(
-                vertices, full_pose, self.dynamic_lmk_faces_idx,
-                self.dynamic_lmk_bary_coords,
-                self.neck_kin_chain,
-                pose2rot=True,
-            )  
-            lmk_faces_idx = torch.cat([dyn_lmk_faces_idx, lmk_faces_idx], 1)
-            lmk_bary_coords = torch.cat(
-                [dyn_lmk_bary_coords, lmk_bary_coords.expand(batch_size, -1, -1)], 1)
-
+            if self.use_face_contour:
+                dyn_lmk_faces_idx, dyn_lmk_bary_coords = find_dynamic_lmk_idx_and_bcoords(
+                    vertices, full_pose, self.dynamic_lmk_faces_idx,
+                    self.dynamic_lmk_bary_coords,
+                    self.neck_kin_chain,
+                    pose2rot=True,
+                )  
+                lmk_faces_idx = torch.cat([dyn_lmk_faces_idx, lmk_faces_idx], 1)
+                lmk_bary_coords = torch.cat(
+                    [dyn_lmk_bary_coords, lmk_bary_coords.expand(batch_size, -1, -1)], 1)
+            
         landmarks = vertices2landmarks(vertices, self.faces_tensor, lmk_faces_idx, lmk_bary_coords)
- 
+        
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)
-  
+        
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
 

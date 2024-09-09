@@ -115,8 +115,8 @@ class Renderer(torch.nn.Module):
         intrinsic = torch.eye(4)[None].expand(n, -1, -1).clone()   
         R = batch_rodrigues(torch.tensor([np.pi, 0, 0]).reshape(1, 3)).reshape(3, 3).float()   
         intrinsic[:, :3, :3] = R
-        
-        mvp = torch.matmul(extrinsic, intrinsic) 
+
+        mvp = torch.matmul(intrinsic, extrinsic) 
         
         if return_all:
             return mvp, extrinsic, intrinsic

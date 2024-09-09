@@ -3,6 +3,7 @@ import pickle as pkl
 import numpy as np
 import torch
 from matplotlib import cm as mpl_cm, colors as mpl_colors
+from typing import Union 
 
 
 def segm_to_vertex_colors(part_segm, n_vertices, alpha=1.0):
@@ -57,24 +58,33 @@ class FlameSeg:
 
         }
 
-    def get_vertex_ids(self, part_name):
+    def get_vertex_ids(self, part_name:Union[list, str])->np.ndarray:
         '''
         get the vertex ids of local part
             Args:
             -----
-            part_name: str
+            part_name: str or list of str
 
             Returns:
             --------
             vertex_ids: np.ndarray, shape M 
         '''
-        if part_name == 'face':
-            v_mask = np.ones((self.N, 1))
-            for key in ['right_ear', 'left_ear', 'neck', 'scalp', 'boundary']:
-                v_mask[self.segms[key]] = 0
-            return np.where(v_mask)[0]
-        else:
-            return self.segms[part_name]
+        if isinstance(part_name, str):
+            part_name = [part_name]
+        
+        vids_all = [] 
+        for name in part_name:
+            if name == 'face':
+                v_mask = np.ones((self.N, 1))
+                for key in ['right_ear', 'left_ear', 'neck', 'scalp', 'boundary']:
+                    v_mask[self.segms[key]] = 0
+                vids = np.where(v_mask)[0]
+            else:
+                vids = self.segms[name]
+            
+            vids_all.extend(vids)
+            
+        return np.array(vids_all)
  
     def get_triangles(self, positive_parts, negative_parts=[], return_mask=False):
         '''
@@ -104,7 +114,7 @@ class FlameSeg:
         
         for name in negative_parts:
             v_mask[self.segms[name]] = 0
-         
+            
         tri_mask = v_mask[self.faces].any(axis=1)
 
         if return_mask:

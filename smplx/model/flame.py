@@ -47,6 +47,7 @@ class FLAME(SMPL):
         ext='pkl',
         upsample: bool = False, 
         create_segms: bool = False,
+        add_teeth: bool = False
         **kwargs
     ) -> None:
         ''' FLAME model constructor
@@ -164,9 +165,9 @@ class FLAME(SMPL):
                 default_reye_pose = torch.tensor(reye_pose, dtype=dtype)
             reye_pose_param = nn.Parameter(default_reye_pose, requires_grad=True)
             self.register_parameter('reye_pose', reye_pose_param)
- 
+
         self.register_buffer("shapedirs", to_tensor(to_np(data_struct.shapedirs), dtype=self.dtype))
- 
+
         if create_expression:
             if expression is None:
                 default_expression = torch.zeros(
@@ -175,7 +176,7 @@ class FLAME(SMPL):
                 default_expression = torch.tensor(expression, dtype=dtype)
             expression_param = nn.Parameter(default_expression, requires_grad=True)
             self.register_parameter('expression', expression_param)
- 
+
         landmark_bcoord_filename = osp.join(model_path, 'landmark_embedding_with_eyes.npy')  
         landmarks_data = np.load(landmark_bcoord_filename, allow_pickle=True, encoding='latin1')[()] 
         self.register_buffer('lmk_faces_idx', torch.tensor(landmarks_data['static_lmk_faces_idx'], dtype=torch.long)) 
@@ -207,7 +208,308 @@ class FLAME(SMPL):
 
         if create_segms: 
             self.segment = FlameSeg(model_path, N=self.N, faces=self.faces)
+
+        if add_teeth:
+            self.add_teeth()
         
+    def add_teeth(self):
+        # self.teeth = teeth
+        vid_lip_outside_ring_upper = self.segment.get_vertex_ids(['lip_outside_ring_upper']) 
+        vid_lip_outside_ring_lower = self.segment.get_vertex_ids(['lip_outside_ring_lower'])
+
+        v_lip_upper = self.v_template[vid_lip_outside_ring_upper]
+        v_lip_lower = self.v_template[vid_lip_outside_ring_lower]
+
+        # construct vertices for teeth
+        mean_dist = (v_lip_upper - v_lip_lower).norm(dim=-1, keepdim=True).mean()
+        v_teeth_middle = (v_lip_upper + v_lip_lower) / 2
+        v_teeth_middle[:, 1] = v_teeth_middle[:, [1]].mean(dim=0, keepdim=True)
+        # v_teeth_middle[:, 2] -= mean_dist * 2.5  # how far the teeth are from the lips
+        # v_teeth_middle[:, 2] -= mean_dist * 2  # how far the teeth are from the lips
+        v_teeth_middle[:, 2] -= mean_dist * 1.5  # how far the teeth are from the lips
+
+        # upper, front
+        v_teeth_upper_edge = v_teeth_middle.clone() + torch.tensor([[0, mean_dist, 0]])*0.1
+        v_teeth_upper_root = v_teeth_upper_edge + torch.tensor([[0, mean_dist, 0]]) * 2  # scale the height of teeth
+
+        # lower, front
+        v_teeth_lower_edge = v_teeth_middle.clone() - torch.tensor([[0, mean_dist, 0]])*0.1
+        # v_teeth_lower_edge -= torch.tensor([[0, 0, mean_dist]]) * 0.2  # slightly move the lower teeth to the back
+        v_teeth_lower_edge -= torch.tensor([[0, 0, mean_dist]]) * 0.4  # slightly move the lower teeth to the back
+        v_teeth_lower_root = v_teeth_lower_edge - torch.tensor([[0, mean_dist, 0]]) * 2  # scale the height of teeth
+
+        # thickness = mean_dist * 0.5
+        thickness = mean_dist * 1.
+        # upper, back
+        v_teeth_upper_root_back = v_teeth_upper_root.clone()
+        v_teeth_upper_edge_back = v_teeth_upper_edge.clone()
+        v_teeth_upper_root_back[:, 2] -= thickness  # how thick the teeth are
+        v_teeth_upper_edge_back[:, 2] -= thickness  # how thick the teeth are
+
+        # lower, back
+        v_teeth_lower_root_back = v_teeth_lower_root.clone()
+        v_teeth_lower_edge_back = v_teeth_lower_edge.clone()
+        v_teeth_lower_root_back[:, 2] -= thickness  # how thick the teeth are
+        v_teeth_lower_edge_back[:, 2] -= thickness  # how thick the teeth are
+        
+        # concatenate to v_template
+        num_verts_orig = self.v_template.shape[0]
+        v_teeth = torch.cat([
+            v_teeth_upper_root,  # num_verts_orig + 0-14 
+            v_teeth_lower_root,  # num_verts_orig + 15-29
+            v_teeth_upper_edge,  # num_verts_orig + 30-44
+            v_teeth_lower_edge,  # num_verts_orig + 45-59
+            v_teeth_upper_root_back,  # num_verts_orig + 60-74
+            v_teeth_upper_edge_back,  # num_verts_orig + 75-89
+            v_teeth_lower_root_back,  # num_verts_orig + 90-104
+            v_teeth_lower_edge_back,  # num_verts_orig + 105-119
+        ], dim=0)
+        num_verts_teeth = v_teeth.shape[0]
+        self.v_template = torch.cat([self.v_template, v_teeth], dim=0)
+
+        vid_teeth_upper_root = torch.arange(0, 15) + num_verts_orig
+        vid_teeth_lower_root = torch.arange(15, 30) + num_verts_orig
+        vid_teeth_upper_edge = torch.arange(30, 45) + num_verts_orig
+        vid_teeth_lower_edge = torch.arange(45, 60) + num_verts_orig
+        vid_teeth_upper_root_back = torch.arange(60, 75) + num_verts_orig
+        vid_teeth_upper_edge_back = torch.arange(75, 90) + num_verts_orig
+        vid_teeth_lower_root_back = torch.arange(90, 105) + num_verts_orig
+        vid_teeth_lower_edge_back = torch.arange(105, 120) + num_verts_orig
+        
+        vid_teeth_upper = torch.cat([vid_teeth_upper_root, vid_teeth_upper_edge, vid_teeth_upper_root_back, vid_teeth_upper_edge_back], dim=0)
+        vid_teeth_lower = torch.cat([vid_teeth_lower_root, vid_teeth_lower_edge, vid_teeth_lower_root_back, vid_teeth_lower_edge_back], dim=0)
+        vid_teeth = torch.cat([vid_teeth_upper, vid_teeth_lower], dim=0)
+      
+        # update vertex masks
+        # self.segment.v.register_buffer("teeth_upper", vid_teeth_upper)
+        # self.segment.v.register_buffer("teeth_lower", vid_teeth_lower)
+        # self.segment.v.register_buffer("teeth", vid_teeth)
+        # self.segment.v.left_half = torch.cat([
+        #     self.segment.v.left_half, 
+        #     torch.tensor([
+        #         5023, 5024, 5025, 5026, 5027, 5028, 5029, 5030, 5038, 5039, 5040, 5041, 5042, 5043, 5044, 5045, 5053, 5054, 5055, 5056, 5057, 5058, 5059, 5060, 5068, 5069, 5070, 5071, 5072, 5073, 5074, 5075, 5083, 5084, 5085, 5086, 5087, 5088, 5089, 5090, 5098, 5099, 5100, 5101, 5102, 5103, 5104, 5105, 5113, 5114, 5115, 5116, 5117, 5118, 5119, 5120, 5128, 5129, 5130, 5131, 5132, 5133, 5134, 5135, 
+        #     ])], dim=0)
+
+        # self.segment.v.right_half = torch.cat([
+        #     self.segment.v.right_half, 
+        #     torch.tensor([
+        #         5030, 5031, 5032, 5033, 5034, 5035, 5036, 5037, 5045, 5046, 5047, 5048, 5049, 5050, 5051, 5052, 5060, 5061, 5062, 5063, 5064, 5065, 5066, 5067, 5075, 5076, 5077, 5078, 5079, 5080, 5081, 5082, 5090, 5091, 5092, 5093, 5094, 5095, 5097, 5105, 5106, 5107, 5108, 5109, 5110, 5111, 5112, 5120, 5121, 5122, 5123, 5124, 5125, 5126, 5127, 5135, 5136, 5137, 5138, 5139, 5140, 5141, 5142, 
+        #     ])], dim=0)
+
+        # # construct uv vertices for teeth
+        # u = torch.linspace(0.62, 0.38, 15)
+        # v = torch.linspace(1-0.0083, 1-0.0425, 7) 
+        # v = v[[3, 2, 0, 1, 3, 4, 6, 5]]  # TODO: with this order, teeth_lower is not rendered correctly in the uv space
+        # uv = torch.stack(torch.meshgrid(u, v, indexing='ij'), dim=-1).permute(1, 0, 2).reshape(num_verts_teeth, 2)  # (#num_teeth, 2)
+        # num_verts_uv_orig = self.verts_uvs.shape[0]
+        # num_verts_uv_teeth = uv.shape[0]
+        # self.verts_uvs = torch.cat([self.verts_uvs, uv], dim=0)
+
+        # shapedirs copy from lips
+        self.shapedirs = torch.cat([self.shapedirs, torch.zeros_like(self.shapedirs[:num_verts_teeth])], dim=0)
+        shape_dirs_mean = (self.shapedirs[vid_lip_outside_ring_upper, :, :self.SHAPE_SPACE_DIM] + self.shapedirs[vid_lip_outside_ring_lower, :, :self.SHAPE_SPACE_DIM]) / 2
+        self.shapedirs[vid_teeth_upper_root, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_lower_root, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_upper_edge, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_lower_edge, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_upper_root_back, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_upper_edge_back, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_lower_root_back, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+        self.shapedirs[vid_teeth_lower_edge_back, :, :self.SHAPE_SPACE_DIM] = shape_dirs_mean
+
+        # posedirs set to zero
+        posedirs = self.posedirs.reshape(len(self.parents)-1, 9, num_verts_orig, 3)  # (J*9, V*3) -> (J, 9, V, 3)
+        posedirs = torch.cat([posedirs, torch.zeros_like(posedirs[:, :, :num_verts_teeth])], dim=2)  # (J, 9, V+num_verts_teeth, 3)
+        self.posedirs = posedirs.reshape((len(self.parents)-1)*9, (num_verts_orig+num_verts_teeth)*3)  # (J*9, (V+num_verts_teeth)*3)
+
+        # J_regressor set to zero
+        self.J_regressor = torch.cat([self.J_regressor, torch.zeros_like(self.J_regressor[:, :num_verts_teeth])], dim=1)  # (5, J) -> (5, J+num_verts_teeth)
+
+        # lbs_weights manually set
+        self.lbs_weights = torch.cat([self.lbs_weights, torch.zeros_like(self.lbs_weights[:num_verts_teeth])], dim=0)  # (V, 5) -> (V+num_verts_teeth, 5)
+        self.lbs_weights[vid_teeth_upper, 1] += 1  # move with neck
+        self.lbs_weights[vid_teeth_lower, 2] += 1  # move with jaw
+
+        # add faces for teeth
+        f_teeth_upper = torch.tensor([
+            [0, 31, 30],  #0
+            [0, 1, 31],  #1
+            [1, 32, 31],  #2
+            [1, 2, 32],  #3
+            [2, 33, 32],  #4
+            [2, 3, 33],  #5
+            [3, 34, 33],  #6
+            [3, 4, 34],  #7
+            [4, 35, 34],  #8
+            [4, 5, 35],  #9
+            [5, 36, 35],  #10
+            [5, 6, 36],  #11
+            [6, 37, 36],  #12
+            [6, 7, 37],  #13
+            [7, 8, 37],  #14
+            [8, 38, 37],  #15
+            [8, 9, 38],  #16
+            [9, 39, 38],  #17
+            [9, 10, 39],  #18
+            [10, 40, 39],  #19
+            [10, 11, 40],  #20
+            [11, 41, 40],  #21
+            [11, 12, 41],  #22
+            [12, 42, 41],  #23
+            [12, 13, 42],  #24
+            [13, 43, 42],  #25
+            [13, 14, 43],  #26
+            [14, 44, 43],  #27
+            [60, 75, 76],  # 56
+            [60, 76, 61],  # 57
+            [61, 76, 77],  # 58
+            [61, 77, 62],  # 59
+            [62, 77, 78],  # 60
+            [62, 78, 63],  # 61
+            [63, 78, 79],  # 62
+            [63, 79, 64],  # 63
+            [64, 79, 80],  # 64
+            [64, 80, 65],  # 65
+            [65, 80, 81],  # 66
+            [65, 81, 66],  # 67
+            [66, 81, 82],  # 68
+            [66, 82, 67],  # 69
+            [67, 82, 68],  # 70
+            [68, 82, 83],  # 71
+            [68, 83, 69],  # 72
+            [69, 83, 84],  # 73
+            [69, 84, 70],  # 74
+            [70, 84, 85],  # 75
+            [70, 85, 71],  # 76
+            [71, 85, 86],  # 77
+            [71, 86, 72],  # 78
+            [72, 86, 87],  # 79
+            [72, 87, 73],  # 80
+            [73, 87, 88],  # 81
+            [73, 88, 74],  # 82
+            [74, 88, 89],  # 83
+            [75, 30, 76],  # 84
+            [76, 30, 31],  # 85
+            [76, 31, 77],  # 86
+            [77, 31, 32],  # 87
+            [77, 32, 78],  # 88
+            [78, 32, 33],  # 89
+            [78, 33, 79],  # 90
+            [79, 33, 34],  # 91
+            [79, 34, 80],  # 92
+            [80, 34, 35],  # 93
+            [80, 35, 81],  # 94
+            [81, 35, 36],  # 95
+            [81, 36, 82],  # 96
+            [82, 36, 37],  # 97
+            [82, 37, 38],  # 98
+            [82, 38, 83],  # 99
+            [83, 38, 39],  # 100
+            [83, 39, 84],  # 101
+            [84, 39, 40],  # 102
+            [84, 40, 85],  # 103
+            [85, 40, 41],  # 104
+            [85, 41, 86],  # 105
+            [86, 41, 42],  # 106
+            [86, 42, 87],  # 107
+            [87, 42, 43],  # 108
+            [87, 43, 88],  # 109
+            [88, 43, 44],  # 110
+            [88, 44, 89],  # 111
+        ]).numpy()
+        f_teeth_lower = torch.tensor([
+            [45, 46, 15],  # 28           
+            [46, 16, 15],  # 29
+            [46, 47, 16],  # 30
+            [47, 17, 16],  # 31
+            [47, 48, 17],  # 32
+            [48, 18, 17],  # 33
+            [48, 49, 18],  # 34
+            [49, 19, 18],  # 35
+            [49, 50, 19],  # 36
+            [50, 20, 19],  # 37
+            [50, 51, 20],  # 38
+            [51, 21, 20],  # 39
+            [51, 52, 21],  # 40
+            [52, 22, 21],  # 41
+            [52, 23, 22],  # 42
+            [52, 53, 23],  # 43
+            [53, 24, 23],  # 44
+            [53, 54, 24],  # 45
+            [54, 25, 24],  # 46
+            [54, 55, 25],  # 47
+            [55, 26, 25],  # 48
+            [55, 56, 26],  # 49
+            [56, 27, 26],  # 50
+            [56, 57, 27],  # 51
+            [57, 28, 27],  # 52
+            [57, 58, 28],  # 53
+            [58, 29, 28],  # 54
+            [58, 59, 29],  # 55
+            [90, 106, 105],  # 112
+            [90, 91, 106],  # 113
+            [91, 107, 106],  # 114
+            [91, 92, 107],  # 115
+            [92, 108, 107],  # 116
+            [92, 93, 108],  # 117
+            [93, 109, 108],  # 118
+            [93, 94, 109],  # 119
+            [94, 110, 109],  # 120
+            [94, 95, 110],  # 121
+            [95, 111, 110],  # 122
+            [95, 96, 111],  # 123
+            [96, 112, 111],  # 124
+            [96, 97, 112],  # 125
+            [97, 98, 112],  # 126
+            [98, 113, 112],  # 127
+            [98, 99, 113],  # 128
+            [99, 114, 113],  # 129
+            [99, 100, 114],  # 130
+            [100, 115, 114],  # 131
+            [100, 101, 115],  # 132
+            [101, 116, 115],  # 133
+            [101, 102, 116],  # 134
+            [102, 117, 116],  # 135
+            [102, 103, 117],  # 136
+            [103, 118, 117],  # 137
+            [103, 104, 118],  # 138
+            [104, 119, 118],  # 139
+            [105, 106, 45],  # 140
+            [106, 46, 45],  # 141
+            [106, 107, 46],  # 142
+            [107, 47, 46],  # 143
+            [107, 108, 47],  # 144
+            [108, 48, 47],  # 145
+            [108, 109, 48],  # 146
+            [109, 49, 48],  # 147
+            [109, 110, 49],  # 148
+            [110, 50, 49],  # 149
+            [110, 111, 50],  # 150
+            [111, 51, 50],  # 151
+            [111, 112, 51],  # 152
+            [112, 52, 51],  # 153
+            [112, 53, 52],  # 154
+            [112, 113, 53],  # 155
+            [113, 54, 53],  # 156
+            [113, 114, 54],  # 157
+            [114, 55, 54],  # 158
+            [114, 115, 55],  # 159
+            [115, 56, 55],  # 160
+            [115, 116, 56],  # 161
+            [116, 57, 56],  # 162
+            [116, 117, 57],  # 163
+            [117, 58, 57],  # 164
+            [117, 118, 58],  # 165
+            [118, 59, 58],  # 166
+            [118, 119, 59],  # 167
+        ]).numpy()
+        self.faces = np.concatenate([self.faces, f_teeth_upper+num_verts_orig, f_teeth_lower+num_verts_orig], axis=0)
+        self.faces_tensor = torch.tensor(self.faces, dtype=torch.long)
+        
+        # self.faces = torch.cat([self.faces, f_teeth_upper+num_verts_orig, f_teeth_lower+num_verts_orig], dim=0)
+        # self.textures_idx = torch.cat([self.textures_idx, f_teeth_upper+num_verts_uv_orig, f_teeth_lower+num_verts_uv_orig], dim=0)
+ 
+    
     @property
     def num_expression_coeffs(self):
         return self.EXPRESSION_SPACE_DIM
@@ -288,7 +590,6 @@ class FLAME(SMPL):
         if mode == 'all': 
             v_template, self.faces, unique = subdivide(self.v_template.cpu().numpy(), self.faces) 
             self.v_template = torch.tensor(v_template).to(self.v_template)
-             
         else:   
             sparse_tri, sparse_tri_mask = self.segment.get_triangles(
                 positive_parts=['neck', 'scalp', 'boundary', 'forehead'],

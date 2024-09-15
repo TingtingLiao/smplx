@@ -116,7 +116,7 @@ class Renderer(torch.nn.Module):
         R = batch_rodrigues(torch.tensor([np.pi, 0, 0]).reshape(1, 3)).reshape(3, 3).float()   
         intrinsic[:, :3, :3] = R
 
-        mvp = torch.matmul(intrinsic, extrinsic) 
+        mvp = torch.bmm(intrinsic, extrinsic) 
         
         if return_all:
             return mvp, extrinsic, intrinsic

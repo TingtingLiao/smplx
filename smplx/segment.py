@@ -164,7 +164,7 @@ class FlameSeg:
         for name in negative_parts:
             v_mask[self.segms[name]] = 0
             
-        tri_mask = v_mask[self.faces].any(axis=1)
+        tri_mask = v_mask[self.faces].all(axis=1)
 
         if return_mask:
             return self.faces[tri_mask], tri_mask

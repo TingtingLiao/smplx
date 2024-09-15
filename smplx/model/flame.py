@@ -47,7 +47,7 @@ class FLAME(SMPL):
         ext='pkl',
         upsample: bool = False, 
         create_segms: bool = False,
-        add_teeth: bool = False
+        add_teeth: bool = False, 
         **kwargs
     ) -> None:
         ''' FLAME model constructor
@@ -210,6 +210,7 @@ class FLAME(SMPL):
             self.segment = FlameSeg(model_path, N=self.N, faces=self.faces)
 
         if add_teeth:
+            print('debugiing add teeth')
             self.add_teeth()
         
     def add_teeth(self):

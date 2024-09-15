@@ -256,14 +256,14 @@ def lbs(
 
     # Add shape blend shape 
     v_shaped = v_template + blend_shapes(betas, shapedirs)
-     
+
     # Get the joints NxJx3 array
     J = vertices2joints(J_regressor, v_shaped)
 
     # Add pose blend shapes 
     pose_offsets, rot_mats = pose_blend_shapes(pose, posedirs, pose2rot, True)
     v_posed = pose_offsets + v_shaped
- 
+
     if v_offsets is not None:
         v_posed += v_offsets
 

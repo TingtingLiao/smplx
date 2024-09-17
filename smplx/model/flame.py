@@ -213,6 +213,12 @@ class FLAME(SMPL):
             print('debugiing add teeth')
             self.add_teeth()
         
+        # laplacian  
+        from pytorch3d.structures.meshes import Meshes
+        
+        laplacian_matrix = Meshes(verts=[self.v_template], faces=[self.faces_tensor]).laplacian_packed().to_dense()
+        self.register_buffer("laplacian_matrix", laplacian_matrix)
+        
     def add_teeth(self):
         # self.teeth = teeth
         vid_lip_outside_ring_upper = self.segment.get_vertex_ids(['lip_outside_ring_upper']) 
@@ -623,16 +629,29 @@ class FLAME(SMPL):
         self.update_J_regressor(joints_cano)
          
     def update_J_regressor(self, joints_cano, betas=None, expression=None):
+        '''
+        v @ J_regressor = joints 
+        
+        Args:
+        -----
+            joints_cano: torch.tensor, shape Jx3
+            
+        '''
+        # remove 
         betas = betas if betas is not None else self.betas
         expression = expression if expression is not None else self.expression
         shape_offsets = self.shape_blendshape(betas, expression) 
         v_shaped = self.v_template + shape_offsets[0]
+        
         J_regressor = np.linalg.lstsq(
             v_shaped.detach().cpu().numpy().T, 
-            joints_cano.detach().cpu().numpy().T, 
+            joints_cano[:3].detach().cpu().numpy().T, 
             rcond=None
-        )[0].T   
-        self.J_regressor = torch.tensor(J_regressor, dtype=self.dtype).to(joints_cano.device)
+        )[0].T   # JxV 
+        J = len(joints_cano)
+        J_regressor = torch.tensor(J_regressor, dtype=self.dtype).to(joints_cano.device)
+        J_regressor = torch.cat([J_regressor, self.J_regressor[J:]], dim=0)
+        self.J_regressor = J_regressor
 
     def set_params(self, params):
         ''' Set the parameters of the model '''
@@ -770,8 +789,8 @@ class FLAME(SMPL):
 
         ##### landmarks 
         if hasattr(self, 'full_lmk_faces_idx') and hasattr(self, 'full_lmk_bary_coords'): 
-            lmk_faces_idx = self.full_lmk_faces_idx.repeat(batch_size, 1)
-            lmk_bary_coords = self.full_lmk_bary_coords.repeat(batch_size, 1, 1)
+            lmk_faces_idx = self.full_lmk_faces_idx.repeat(batch_size, 1)   #[bach, J]
+            lmk_bary_coords = self.full_lmk_bary_coords.repeat(batch_size, 1, 1)  #[bach, J, 3]
         else:
             lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1).contiguous()
             lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).repeat(batch_size, 1, 1)

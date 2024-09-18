@@ -645,12 +645,12 @@ class FLAME(SMPL):
         
         J_regressor = np.linalg.lstsq(
             v_shaped.detach().cpu().numpy().T, 
-            joints_cano[:3].detach().cpu().numpy().T, 
+            joints_cano.detach().cpu().numpy().T, 
             rcond=None
         )[0].T   # JxV 
         J = len(joints_cano)
         J_regressor = torch.tensor(J_regressor, dtype=self.dtype).to(joints_cano.device)
-        J_regressor = torch.cat([J_regressor, self.J_regressor[J:]], dim=0)
+        # J_regressor = torch.cat([J_regressor, self.J_regressor[3:]], dim=0)
         self.J_regressor = J_regressor
 
     def set_params(self, params):

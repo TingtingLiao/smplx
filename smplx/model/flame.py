@@ -213,12 +213,6 @@ class FLAME(SMPL):
             print('debugiing add teeth')
             self.add_teeth()
         
-        # laplacian  
-        from pytorch3d.structures.meshes import Meshes
-        
-        laplacian_matrix = Meshes(verts=[self.v_template], faces=[self.faces_tensor]).laplacian_packed().to_dense()
-        self.register_buffer("laplacian_matrix", laplacian_matrix)
-        
     def add_teeth(self):
         # self.teeth = teeth
         vid_lip_outside_ring_upper = self.segment.get_vertex_ids(['lip_outside_ring_upper']) 

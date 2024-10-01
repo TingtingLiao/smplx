@@ -213,6 +213,7 @@ class FLAME(SMPL):
             print('debugiing add teeth')
             self.add_teeth()
         
+        
     def add_teeth(self):
         # self.teeth = teeth
         vid_lip_outside_ring_upper = self.segment.get_vertex_ids(['lip_outside_ring_upper']) 

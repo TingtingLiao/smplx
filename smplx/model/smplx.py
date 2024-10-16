@@ -403,12 +403,10 @@ class SMPLX(SMPLH):
             self.posedirs,
             self.J_regressor, 
             self.parents,
-            self.lbs_weights if not self.upsample else self.upsample_lbs_weights, 
+            self.lbs_weights, 
             v_offsets=v_offsets, 
             pose2rot=pose2rot,
-            custom_out=True,  
-            upsample_unique=self.unique if self.upsample else None, 
-            faces=self.faces_tensor if self.upsample else None
+            custom_out=True,   
         )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(

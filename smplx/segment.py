@@ -21,7 +21,40 @@ def segm_to_vertex_colors(part_segm, n_vertices, alpha=1.0):
 
     return vertex_colors
 
-   
+
+class BaseSeg:
+    def __init__(self):
+        # self.device = device
+        pass 
+
+    def get_vertex_ids(self, part_name:Union[list, str])->np.ndarray:
+        '''
+        get the vertex ids of local part
+            Args:
+            -----
+            part_name: str or list of str
+
+            Returns:
+            --------
+            vertex_ids: np.ndarray, shape M 
+        '''
+        if isinstance(part_name, str):
+            part_name = [part_name]
+        
+        vids_all = [] 
+        for name in part_name:
+            if name == 'face':
+                v_mask = np.ones((self.N, 1))
+                for key in ['right_ear', 'left_ear', 'neck', 'scalp', 'boundary']:
+                    v_mask[self.segms[key]] = 0
+                vids = np.where(v_mask)[0]
+            else:
+                vids = self.segms[name]
+            
+            vids_all.extend(vids)
+            
+        return np.array(vids_all) 
+
 
 class FlameSeg:
     def __init__(self, flame_dir, faces, N=5023):  
@@ -33,7 +66,7 @@ class FlameSeg:
         # additional parts 
         self.segms.update({
             'left_eyeball_cone': [
-                837, 838, 839, 840, 841, 842, 846, 847, 848, 1000, 1001, 1002, 1003, 1006, 1007, 1008, 1010, 1011, 1045, 1046, 1061, 1063, 1064, 1065, 1068, 1075, 1085, 1086, 1115, 1116, 1117, 1125, 1126, 1127, 1128, 1129, 1132, 1134, 1142, 1143, 1147, 1150, 1227, 1228, 1229, 1230, 1232, 1233, 1241, 1242, 1283, 1284, 1287, 1289, 1320, 1321, 1361, 3824, 3835, 3861, 3862, 3929
+                837, 838, 840, 841, 842, 846, 847, 848, 1000, 1001, 1002, 1003, 1006, 1007, 1008, 1010, 1011, 1045, 1046, 1061, 1063, 1064, 1065, 1068, 1075, 1085, 1086, 1115, 1116, 1117, 1125, 1126, 1127, 1128, 1129, 1132, 1134, 1142, 1143, 1147, 1150, 1227, 1228, 1229, 1230, 1232, 1233, 1241, 1242, 1283, 1284, 1287, 1289, 1320, 1321, 1361, 3824, 3835, 3861, 3862, 3929
             ],
             'right_eyeball_cone': [
                 2279, 2280, 2281, 2282, 2283, 2284, 2285, 2286, 2361, 2362, 2363, 2364, 2365, 2366, 2367, 2368, 2369, 2386, 2387, 2390, 2392, 2393, 2394, 2395, 2396, 2397, 2398, 2408, 2409, 2410, 2411, 2412, 2413, 2414, 2415, 2416, 2417, 2419, 2420, 2423, 2424, 2457, 2458, 2459, 2460, 2461, 2462, 2463, 2464, 2467, 2468, 2469, 2470, 2478, 2479, 2510, 3616, 3638, 3700, 3702, 3930
@@ -131,7 +164,7 @@ class FlameSeg:
             vids_all.extend(vids)
             
         return np.array(vids_all)
- 
+
     def get_triangles(self, positive_parts, negative_parts=[], return_mask=False):
         '''
         get the triangles of local part
@@ -208,8 +241,8 @@ class FlameSeg:
         return self._vc 
 
 
-class SmplxSeg:
-    def __init__(self, smplx_dir, device):
+class SmplxSeg(BaseSeg):
+    def __init__(self, smplx_dir):
         #  'leftHand', 'rightHand', 
         #  'rightUpLeg', 'leftUpLeg'
         #  'leftArm', 'rightArm'
@@ -223,11 +256,10 @@ class SmplxSeg:
         #  'leftHandIndex1',  , 'rightHandIndex1', 
         #  'leftForeArm', 'rightForeArm', 
         #  'hips' 
-        self.smplx_segs = json.load(open(f"{smplx_dir}/smplx_vert_segementation.json", 'r'))
+        self.segms = json.load(open(f"{smplx_dir}/smplx_vert_segementation.json", 'r'))
         self.flame_segs = pkl.load(open(f"{smplx_dir}/FLAME_masks.pkl", "rb"), encoding='latin1')
         self.flame_to_smplx_vid = np.load(f"{smplx_dir}/FLAME_SMPLX_vertex_ids.npy", allow_pickle=True)
         self.smplx_faces = np.load(f"{smplx_dir}/smplx_faces.npy")   
-        self.device = device  
         self.N = 10475
         self._vc = None
     
@@ -238,12 +270,12 @@ class SmplxSeg:
 
     def get_triangles(self, part_name):
         v_mask = np.zeros((self.N, 1))   
-        v_mask[self.smplx_segs[part_name]] = 1 
+        v_mask[self.segms[part_name]] = 1 
         triangles = index_triangles_from_vertex_mask(v_mask, self.smplx_faces) 
-        return torch.tensor(triangles, dtype=torch.long, device=self.device)
+        return triangles
 
-    def get_vertex_ids(self, part_name):
-        return self.smplx_segs[part_name]
+    # def get_vertex_ids(self, part_name):
+    #     return self.segms[part_name]
 
     def init_part_triangls(self):
         for part_name in self.smplx_segs.keys(): 

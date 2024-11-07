@@ -23,8 +23,7 @@ def segm_to_vertex_colors(part_segm, n_vertices, alpha=1.0):
 
 
 class BaseSeg:
-    def __init__(self):
-        # self.device = device
+    def __init__(self): 
         pass 
 
     def get_vertex_ids(self, part_name:Union[list, str])->np.ndarray:
@@ -55,8 +54,67 @@ class BaseSeg:
             
         return np.array(vids_all) 
 
+    def get_triangles(self, positive_parts:Union[list, str], negative_parts:Union[list, str]=[], return_mask=False):
+        '''
+        get the triangles of local part
+            Args:
+            -----
+            positive_parts: str or list of str
+                the name of the part
+            negative_parts: str or list of str
+                the name of the part
+            return_mask: bool
+                whether return the mask of triangles
+            
+            Returns:
+            --------
+            triangles: np.ndarray, shape Mx3 
+        ''' 
+        if isinstance(positive_parts, str):
+            if positive_parts == 'all':
+                positive_parts = self.partnames
+            else:
+                positive_parts = [positive_parts]
+        
+        if isinstance(negative_parts, str):
+            negative_parts = [negative_parts]
 
-class FlameSeg:
+        v_mask = np.zeros((self.N)) 
+        for name in positive_parts:
+            v_mask[self.segms[name]] = 1
+        
+        for name in negative_parts:
+            v_mask[self.segms[name]] = 0
+            
+        tri_mask = v_mask[self.faces].all(axis=1)
+
+        if return_mask:
+            return self.faces[tri_mask], tri_mask
+        
+        return self.faces[tri_mask]
+
+    def get_vertices(self, vertices, part_name):
+        '''
+        get the vertices of local part
+        
+            Args
+            ----------
+            vertices: torch.tensor, shape BxNx3 or Nx3
+            part_name: str, 
+                the name of the part
+
+            Returns
+            ------- 
+            vertices: torch.tensor, shape BxMx3 or Mx3
+        '''
+        assert len(vertices.shape) == 2 or len(vertices.shape) == 3
+        if len(vertices.shape) == 2:
+            return vertices[self.segms[part_name]]
+        else:
+            return vertices[:, self.segms[part_name]]
+        
+        
+class FlameSeg(BaseSeg):
     def __init__(self, flame_dir, faces, N=5023):  
         self.segms = pkl.load(open(f"{flame_dir}/FLAME_masks.pkl", "rb"), encoding='latin1') 
         self.N = N
@@ -134,102 +192,8 @@ class FlameSeg:
 
             'left_eyeball': [255, 0, 170], 
             'right_eyeball': [255, 0, 170],
-
         }
 
-    def get_vertex_ids(self, part_name:Union[list, str])->np.ndarray:
-        '''
-        get the vertex ids of local part
-            Args:
-            -----
-            part_name: str or list of str
-
-            Returns:
-            --------
-            vertex_ids: np.ndarray, shape M 
-        '''
-        if isinstance(part_name, str):
-            part_name = [part_name]
-        
-        vids_all = [] 
-        for name in part_name:
-            if name == 'face':
-                v_mask = np.ones((self.N, 1))
-                for key in ['right_ear', 'left_ear', 'neck', 'scalp', 'boundary']:
-                    v_mask[self.segms[key]] = 0
-                vids = np.where(v_mask)[0]
-            else:
-                vids = self.segms[name]
-            
-            vids_all.extend(vids)
-            
-        return np.array(vids_all)
-
-    def get_triangles(self, positive_parts, negative_parts=[], return_mask=False):
-        '''
-        get the triangles of local part
-            Args:
-            -----
-            positive_parts: str or list of str
-                the name of the part
-            negative_parts: str or list of str
-                the name of the part
-            return_mask: bool
-                whether return the mask of triangles
-            
-            Returns:
-            --------
-            triangles: np.ndarray, shape Mx3 
-        ''' 
-        if isinstance(positive_parts, str):
-            if positive_parts == 'all':
-                positive_parts = self.partnames
-            else:
-                positive_parts = [positive_parts]
-        
-        if isinstance(negative_parts, str):
-            negative_parts = [negative_parts]
-
-        v_mask = np.zeros((self.N)) 
-        for name in positive_parts:
-            v_mask[self.segms[name]] = 1
-        
-        for name in negative_parts:
-            v_mask[self.segms[name]] = 0
-            
-        tri_mask = v_mask[self.faces].all(axis=1)
-
-        if return_mask:
-            return self.faces[tri_mask], tri_mask
-        
-        return self.faces[tri_mask]
-
-    def get_vertices(self, vertices, part_name):
-        '''
-        get the vertices of local part
-        
-            Args
-            ----------
-            vertices: torch.tensor, shape BxNx3 or Nx3
-            part_name: str, 
-                the name of the part
-
-            Returns
-            ------- 
-            vertices: torch.tensor, shape BxMx3 or Mx3
-        '''
-        assert len(vertices.shape) == 2 or len(vertices.shape) == 3
-        if len(vertices.shape) == 2:
-            return vertices[self.segms[part_name]]
-        else:
-            return vertices[:, self.segms[part_name]]
-
-    # @property 
-    # def vc(self):
-    #     if self._vc is None:
-    #         self._vc = segm_to_vertex_colors(self.segms, self.N)[:, :3]
-    #         self._vc = torch.tensor(self._vc, dtype=torch.float, device=self.device)
-    #     return self._vc 
 
     @property 
     def vc(self):
@@ -259,7 +223,7 @@ class SmplxSeg(BaseSeg):
         self.segms = json.load(open(f"{smplx_dir}/smplx_vert_segementation.json", 'r'))
         self.flame_segs = pkl.load(open(f"{smplx_dir}/FLAME_masks.pkl", "rb"), encoding='latin1')
         self.flame_to_smplx_vid = np.load(f"{smplx_dir}/FLAME_SMPLX_vertex_ids.npy", allow_pickle=True)
-        self.smplx_faces = np.load(f"{smplx_dir}/smplx_faces.npy")   
+        self.faces = np.load(f"{smplx_dir}/smplx_faces.npy")   
         self.N = 10475
         self._vc = None
     
@@ -267,15 +231,6 @@ class SmplxSeg(BaseSeg):
         for key in ['right_ear', 'left_ear', 'nose', 'lips']:
             if key in flame_vid:
                 return list(self.smplx_flame_vid[self.flame_segs["left_ear"]])
-
-    def get_triangles(self, part_name):
-        v_mask = np.zeros((self.N, 1))   
-        v_mask[self.segms[part_name]] = 1 
-        triangles = index_triangles_from_vertex_mask(v_mask, self.smplx_faces) 
-        return triangles
-
-    # def get_vertex_ids(self, part_name):
-    #     return self.segms[part_name]
 
     def init_part_triangls(self):
         for part_name in self.smplx_segs.keys(): 

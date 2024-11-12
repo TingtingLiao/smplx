@@ -123,8 +123,8 @@ class Renderer(torch.nn.Module):
         
         return mvp
     
-    def render_360views(self, input_mesh, num_views, res=512, bg='white', resize=True, loop=1, shading_mode='albedo'):
-        mesh = input_mesh.clone() 
+    def render_360views(self, input_mesh, num_views, res=512, bg='white', resize=True, loop=1, shading_mode='albedo', yaw_range=(0, 360), size=1.0, spp=1):
+        mesh = input_mesh.clone()
         device = mesh.v.device  
         
         bg_color = torch.ones(3).to(device) if bg == 'white' else torch.zeros(3).to(device) 
@@ -133,20 +133,24 @@ class Renderer(torch.nn.Module):
             mesh.auto_normal() 
         
         if resize:
-            mesh.auto_size() 
+            mesh.auto_size(size) 
 
         # camera 
-        yaw_range = (0, 360*loop)
+        yaw_range = (yaw_range[0], yaw_range[1]*loop)
         mvps = self.get_orthogonal_cameras(num_views, yaw_range).to(device)
         
-        pkg = self.forward(mesh, mvps, spp=2, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode)
+        pkg = self.forward(mesh, mvps, spp=spp, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode)
         return pkg
+    
     
     def forward(self, mesh, mvp, h=512, w=512,
                 light_d=None,
                 ambient_ratio=1.,
                 shading_mode='albedo',
                 spp=1,
+                show_wire=False, 
+                wire_width=0.05,
+                wire_color=[0.5, 0.5, 0.5], 
                 bg_color=None):
         """
         Args: 
@@ -208,18 +212,29 @@ class Renderer(torch.nn.Module):
         if color is not None:
             color = dr.antialias(color, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
 
+        
+        if show_wire:
+            u = rast[..., 0] # [1, h, w]
+            v = rast[..., 1] # [1, h, w]
+            _w = 1 - u - v
+            # mask = rast[..., 2]
+            near_edge = (((_w < wire_width) | (u < wire_width) | (v < wire_width)) & (alpha[..., 0] > 0)) # [B, h, w]
+            color[near_edge] = torch.tensor(wire_color).float().to(u.device) 
+            
         ### inverse super-sampling
         if spp > 1:
             if color is not None:
                 color = scale_img_nhwc(color, (h, w))
             alpha = scale_img_nhwc(alpha, (h, w))
-            normal = scale_img_nhwc(normal, (h, w))
+            normal = scale_img_nhwc(normal, (h, w)) 
 
         ### background
         if bg_color is not None:
             if color is not None:
                 color = color * alpha + bg_color * (1 - alpha)
             normal = normal * alpha + bg_color * (1 - alpha)
+
+        
 
         return {
             'image': color,

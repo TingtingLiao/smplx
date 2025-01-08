@@ -95,7 +95,7 @@ class Renderer(torch.nn.Module):
 
         return color 
 
-    def get_orthogonal_cameras(self, n=4, yaw_range=(0, 360), return_all=False):
+    def get_orthogonal_cameras(self, n=4, yaw_range=(0, 360), endpoint=False, return_all=False):
         """
         generate orthogonal cameras mvp matrix along yaw axis
         Args:
@@ -107,7 +107,7 @@ class Renderer(torch.nn.Module):
         # extrinsic: rotate object along yaw axis
         extrinsic = torch.eye(4)[None].expand(n, -1, -1).clone()   
         min_yaw, max_yaw = np.radians(yaw_range)
-        angles = np.linspace(min_yaw, max_yaw, n, endpoint=False)
+        angles = np.linspace(min_yaw, max_yaw, n, endpoint=endpoint)
         R = batch_rodrigues(torch.tensor([[0, angle, 0] for angle in angles]).reshape(-1, 3)).float() 
         extrinsic[:, :3, :3] = R 
 

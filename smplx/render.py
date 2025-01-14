@@ -123,7 +123,13 @@ class Renderer(torch.nn.Module):
         
         return mvp
     
-    def render_360views(self, input_mesh, num_views, res=512, bg='white', resize=True, loop=1, shading_mode='albedo', yaw_range=(0, 360), size=1.0, spp=1):
+    def render_360views(
+        self, input_mesh, num_views, res=512, bg='white',  
+        loop=1, shading_mode='albedo', 
+        yaw_range=(0, 360), 
+        resize=True, size=1.0, spp=1, 
+        show_wire=False, wire_width=0.05,
+        ):
         mesh = input_mesh.clone()
         device = mesh.v.device  
         
@@ -138,7 +144,8 @@ class Renderer(torch.nn.Module):
         # camera 
         yaw_range = (yaw_range[0], yaw_range[1]*loop)
         mvps = self.get_orthogonal_cameras(num_views, yaw_range).to(device)
-        
+        # mvps[:, 2, 3] += 0.1  # move camera back a bit
+        # print('debuging camera dist ', mvps[:, 2, 3])
         pkg = self.forward(mesh, mvps, spp=spp, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode)
         return pkg
     

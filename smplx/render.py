@@ -128,7 +128,7 @@ class Renderer(torch.nn.Module):
         loop=1, shading_mode='albedo', 
         yaw_range=(0, 360), 
         resize=True, size=1.0, spp=1, 
-        show_wire=False, wire_width=0.05,
+        **kwargs
         ):
         mesh = input_mesh.clone()
         device = mesh.v.device  
@@ -146,7 +146,7 @@ class Renderer(torch.nn.Module):
         mvps = self.get_orthogonal_cameras(num_views, yaw_range).to(device)
         # mvps[:, 2, 3] += 0.1  # move camera back a bit
         # print('debuging camera dist ', mvps[:, 2, 3])
-        pkg = self.forward(mesh, mvps, spp=spp, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode)
+        pkg = self.forward(mesh, mvps, spp=spp, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode, **kwargs)
         return pkg
     
     

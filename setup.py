@@ -11,5 +11,7 @@ setup(
         'tqdm', 
         'matplotlib', 
         'kiui', 
+        'chumpy', 
+        
     ],
 )

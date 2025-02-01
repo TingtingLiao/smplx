@@ -12,6 +12,6 @@ setup(
         'matplotlib', 
         'kiui', 
         'chumpy', 
-        
+        'rich'
     ],
 )

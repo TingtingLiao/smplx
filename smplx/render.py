@@ -149,7 +149,7 @@ class Renderer(torch.nn.Module):
         pkg = self.forward(mesh, mvps, spp=spp, bg_color=bg_color, h=res, w=res, shading_mode=shading_mode, **kwargs)
         return pkg
     
-    
+
     def forward(self, mesh, mvp, h=512, w=512,
                 light_d=None,
                 ambient_ratio=1.,
@@ -182,9 +182,10 @@ class Renderer(torch.nn.Module):
         v_homo = F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1)
         v_clip = torch.bmm(v_homo, torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
 
+        
         res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
         rast, rast_db = dr.rasterize(self.glctx, v_clip, mesh.f, res)
-        alpha = (rast[..., 3:] > 0).float()
+        alpha = (rast[..., 3:] > 0).float() # [B, H, W, 1] 
         
         # alpha, _ = dr.interpolate(torch.ones_like(v_clip[..., :1]), rast, mesh.f)  # [B, H, W, 1] 
 
@@ -218,7 +219,6 @@ class Renderer(torch.nn.Module):
         alpha = dr.antialias(alpha, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
         if color is not None:
             color = dr.antialias(color, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
-
         
         if show_wire:
             u = rast[..., 0] # [1, h, w]
@@ -240,12 +240,11 @@ class Renderer(torch.nn.Module):
             if color is not None:
                 color = color * alpha + bg_color * (1 - alpha)
             normal = normal * alpha + bg_color * (1 - alpha)
-
         
-
         return {
             'image': color,
             'normal': normal,
             'alpha': alpha, 
-            'uvs': texc
+            'uvs': texc, 
+            'pix_to_face': rast[..., 3].long()
         }

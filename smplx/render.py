@@ -7,7 +7,7 @@ from time import time
 import nvdiffrast.torch as dr
 from rich.progress import track
 from kiui.op import scale_img_nhwc, safe_normalize
-
+from typing import List
 from .lbs import batch_rodrigues 
 
 
@@ -123,6 +123,24 @@ class Renderer(torch.nn.Module):
         
         return mvp
     
+
+    def get_bg_color(self, phrase):
+        if phrase is None:
+            return torch.ones(3)
+        if isinstance(phrase, str):
+            if phrase == 'white':
+                return torch.ones(3)
+            elif phrase == 'black':
+                return torch.zeros(3)
+            elif phrase == 'gray':
+                return torch.ones(3) * 0.5 
+            else:
+                raise ValueError('')
+        elif isinstance(phrase, List):
+            return torch.tensor(phrase)
+        else:
+            raise ValueError('')
+
     def render_360views(
         self, input_mesh, num_views, res=512, bg='white',  
         loop=1, shading_mode='albedo', 
@@ -133,8 +151,9 @@ class Renderer(torch.nn.Module):
         mesh = input_mesh.clone()
         device = mesh.v.device  
         
-        bg_color = torch.ones(3).to(device) if bg == 'white' else torch.zeros(3).to(device) 
-        
+        # bg_color = torch.ones(3).to(device) if bg == 'white' else torch.zeros(3).to(device) 
+        bg_color = self.get_bg_color(bg).to(device)
+
         if mesh.vn is None:
             mesh.auto_normal() 
         

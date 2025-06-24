@@ -12,6 +12,7 @@ setup(
         'matplotlib', 
         'kiui', 
         'chumpy', 
-        'rich'
+        'rich',
+        'git+https://github.com/NVlabs/nvdiffrast.git'
     ],
 )

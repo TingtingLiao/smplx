@@ -13,6 +13,6 @@ setup(
         'kiui', 
         'chumpy', 
         'rich',
-        'git+https://github.com/NVlabs/nvdiffrast.git'
+        'nvdiffrast @ git+https://github.com/NVlabs/nvdiffrast.git',
     ],
 )
